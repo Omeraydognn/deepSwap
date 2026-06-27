@@ -151,14 +151,20 @@ export async function executeTradeTransaction(from, traderAddress, amountMon, to
     return sendTradeTransaction(from, traderAddress, amountMon);
   }
 
-  // Sabit listede (USDC, WETH) varsa adresini al
-  const knownToken = SWAP_TOKENS.find(t => t.symbol === tokenSymbol);
+  // Sabit listede varsa adresini al (case-insensitive)
+  const symUpper = tokenSymbol.toUpperCase();
+  const knownToken = SWAP_TOKENS.find(t => t.symbol.toUpperCase() === symUpper);
   const targetAddress = tokenAddress || knownToken?.address;
 
   if (!targetAddress) {
-    // Bilinmeyen token ve adresi yok → fallback: MON transfer
+    // Adresi bilinmeyen token → MON transfer
     return sendTradeTransaction(from, traderAddress, amountMon);
   }
 
-  return swapMonForToken(from, targetAddress, amountMon);
+  try {
+    return await swapMonForToken(from, targetAddress, amountMon);
+  } catch {
+    // Swap fail (pool yok, likidite yok, vb.) → MON transfer'a düş
+    return sendTradeTransaction(from, traderAddress, amountMon);
+  }
 }

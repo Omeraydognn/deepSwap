@@ -242,7 +242,7 @@ body {
   position: relative;
   width: 100%;
   flex: 1;
-  min-height: 460px;
+  min-height: 0;
   margin: 0 auto;
 }
 
@@ -252,6 +252,7 @@ body {
   align-items: center;
   justify-content: space-evenly;
   padding: 16px 0 12px;
+  flex-shrink: 0;
 }
 
 .btn-pass, .btn-copy, .btn-ape {
@@ -423,19 +424,33 @@ body {
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 0; }
 
+/* ── Hide scrollbar utility ── */
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Responsive — real phone */
 @media (max-width: 480px) {
   html, body, #root {
     height: 100%;
     width: 100%;
-    display: block;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
   }
 
   body {
     min-height: 100dvh;
-    display: flex;
-    align-items: flex-start;
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+
+  #root {
+    align-items: stretch;
     justify-content: flex-start;
   }
 
@@ -447,9 +462,18 @@ body {
     border-radius: 0;
     box-shadow: none;
     transform: none !important;
+    flex: 1;
   }
 
   .dynamic-island {
     display: none;
+  }
+
+  .mobile-header {
+    padding: 6px 16px 12px;
+  }
+
+  .bottom-nav {
+    padding: 10px 8px env(safe-area-inset-bottom, 20px);
   }
 }

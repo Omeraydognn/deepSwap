@@ -42,6 +42,7 @@ const TOASTS = {
   connect:    { msg: 'Wallet Connected',    icon: '🟢', color: 'rgba(0,192,135,0.95)',  border: 'rgba(0,192,135,0.3)' },
   tx_sent:    { msg: 'Tx Sent!',           icon: '⛓',  color: 'rgba(123,97,255,0.95)', border: 'rgba(123,97,255,0.3)' },
   tx_error:   { msg: 'Tx Failed',          icon: '⚠',  color: 'rgba(255,71,87,0.95)',  border: 'rgba(255,71,87,0.3)' },
+  no_funds:   { msg: 'Not enough MON!',    icon: '💰', color: 'rgba(255,159,28,0.95)', border: 'rgba(255,159,28,0.3)' },
   no_wallet:  { msg: 'Install MetaMask!',  icon: '🦊', color: 'rgba(255,181,71,0.95)', border: 'rgba(255,181,71,0.3)' },
 };
 
@@ -192,11 +193,11 @@ function TierSelector({ amount, onChange }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 6,
-      padding: '8px 12px',
+      padding: '7px 12px',
       background: 'rgba(255,255,255,0.04)',
       border: '1px solid rgba(255,255,255,0.08)',
       borderRadius: 16,
-      marginBottom: 10,
+      marginBottom: 0,
     }}>
       <span style={{ fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.12em', whiteSpace: 'nowrap', marginRight: 2 }}>MON</span>
       <div style={{ display: 'flex', gap: 5, flex: 1 }}>
@@ -252,7 +253,7 @@ function TierSelector({ amount, onChange }) {
 
 function TokenSelector({ selected, onChange, tokens }) {
   return (
-    <div className="hide-scrollbar" style={{ display: 'flex', gap: 6, marginBottom: 8, overflowX: 'auto', paddingBottom: 4 }}>
+    <div className="hide-scrollbar" style={{ display: 'flex', gap: 6, marginBottom: 6, overflowX: 'auto', paddingBottom: 2 }}>
       {tokens.map(t => (
         <button
           key={t.symbol}
@@ -302,21 +303,22 @@ export default function App() {
 
   const allTokens = useMemo(() => {
     const base = [...SWAP_TOKENS];
-    const seen = new Set(base.map(t => t.symbol));
+    const seen = new Set(base.map(t => t.symbol.toUpperCase()));
     for (const pt of trendingTokens) {
       const sym = pt.baseToken?.symbol;
-      if (sym && !seen.has(sym)) {
-        seen.add(sym);
-        base.push({
-          symbol: sym,
-          label: sym,
-          icon: null,
-          imageUrl: pt.imageUrl,
-          color: '#ffffff', // default if no specific color
-          address: pt.baseToken.address,
-          pairAddress: pt.pairAddress,
-        });
-      }
+      if (!sym) continue;
+      const symUpper = sym.toUpperCase();
+      if (seen.has(symUpper)) continue;
+      seen.add(symUpper);
+      base.push({
+        symbol: symUpper,
+        label: symUpper,
+        icon: null,
+        imageUrl: pt.imageUrl,
+        color: '#ffffff',
+        address: pt.baseToken.address,
+        pairAddress: pt.pairAddress,
+      });
     }
     return base;
   }, [trendingTokens]);
@@ -452,7 +454,13 @@ export default function App() {
       setLastTxHash(txHash);
       showToast('tx_sent');
     } catch (err) {
-      if (err.code !== 4001) showToast('tx_error');
+      if (err.code === 4001) return;
+      const msg = (err.message || '').toLowerCase();
+      if (msg.includes('insufficient funds') || msg.includes('insufficient balance') || msg.includes('exceeds balance')) {
+        showToast('no_funds');
+      } else {
+        showToast('tx_error');
+      }
     }
   }, [walletAddress]);
 
@@ -596,9 +604,9 @@ export default function App() {
       {/* ── MOBILE HEADER ── */}
       <header className="mobile-header" style={activeChat ? { display: 'none' } : {}}>
         <div>
-          <div className="mobile-header-subtitle">MONAD SWIPE</div>
+          <div className="mobile-header-subtitle">DEGENSLIDE</div>
           <div className="mobile-header-title">
-            {activeTab === 'deck' ? 'Trade Deck' : activeTab === 'leaderboard' ? 'Leaderboard' : activeTab === 'portfolio' ? 'Portfolio' : 'Profile'}
+            {activeTab === 'deck' ? '' : activeTab === 'leaderboard' ? 'Leaderboard' : activeTab === 'portfolio' ? 'Portfolio' : 'Profile'}
           </div>
         </div>
         <button
@@ -637,7 +645,11 @@ export default function App() {
 
       {/* ── MAIN CONTENT ── */}
       <main className="main-content">
-        {!isConnected ? (
+        {activeTab === 'leaderboard' ? (
+          <div className="h-full overflow-hidden -mx-4 flex flex-col">
+            <Leaderboard traders={cards.length > 0 ? cards : mockTraders} />
+          </div>
+        ) : !isConnected ? (
           <div className="flex flex-col items-center justify-center h-full text-center pb-20" style={{ gap: 16 }}>
             <div style={{ fontSize: 64, filter: 'drop-shadow(0 0 24px rgba(247,37,133,0.5))' }}>🦊</div>
             <h3 style={{ fontSize: 20, fontWeight: 900, color: '#ffffff', margin: 0 }}>Connect to Swipe</h3>
@@ -652,6 +664,13 @@ export default function App() {
               </div>
             ) : cards.length > 0 ? (
               <>
+                {/* ── Trade controls: token + miktar seçimi ── */}
+                <div style={{ flexShrink: 0, paddingBottom: 6 }}>
+                  <TokenSelector selected={tradeToken} onChange={setTradeToken} tokens={allTokens} />
+                  <TierSelector amount={tradeAmount} onChange={setTradeAmount} />
+                </div>
+
+                {/* ── Kart destesi ── */}
                 <div className="card-deck-area">
                   {[...cards.slice(0, 4)].reverse().map((trader, i, arr) => {
                     const stackIndex = arr.length - 1 - i;
@@ -671,8 +690,8 @@ export default function App() {
                     );
                   })}
                 </div>
-                <TokenSelector selected={tradeToken} onChange={setTradeToken} tokens={allTokens} />
-                <TierSelector amount={tradeAmount} onChange={setTradeAmount} />
+
+                {/* ── Aksiyon butonları ── */}
                 <div className="action-row">
                   <button type="button" className="btn-pass" onClick={() => swipe('left')} title="Pass">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -717,10 +736,6 @@ export default function App() {
             ) : (
               <Inbox matches={matches} lastMessages={messages} onOpenChat={setActiveChat} />
             )}
-          </div>
-        ) : activeTab === 'leaderboard' ? (
-          <div className="h-full overflow-hidden -mx-4">
-            <Leaderboard traders={cards.length > 0 ? cards : mockTraders} />
           </div>
         ) : activeTab === 'portfolio' ? (
           <div className="h-full px-1">
