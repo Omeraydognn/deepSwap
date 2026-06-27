@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/VICTUS/OneDrive/Documents/Masa�st�/**)",
+      "Skill(run)",
+      "Skill(run:*)",
+      "WebFetch(domain:localhost)",
+      "Bash(npm run *)"
+    ]
+  }
+}
