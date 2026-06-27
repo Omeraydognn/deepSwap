@@ -3,7 +3,7 @@ import SwipeCard from './components/SwipeCard';
 import Leaderboard from './components/Leaderboard';
 import Portfolio from './components/Portfolio';
 import mockTraders from './data/mockTraders.json';
-import { fetchTopTraders, fetchMonadStats } from './services/monadApi';
+import { fetchTopTraders, fetchMonadStats, EXPLORER_ADDR_URL } from './services/monadApi';
 import { fetchMONPrice, fetchMonadTrendingTokens } from './services/dexscreenerApi';
 import {
   connectWallet,
@@ -278,6 +278,7 @@ export default function App() {
   const [tradeAmount, setTradeAmount]   = useState(() => loadLS('monad_tradeAmount', 0.001));
   const [tradeToken, setTradeToken]     = useState(() => loadLS('monad_tradeToken', 'MON'));
   const [lastTxHash, setLastTxHash]     = useState(() => loadLS('monad_lastTx', null));
+  const [favorites, setFavorites]       = useState(() => loadLS('monad_favorites', []));
   const topCardRef  = useRef(null);
   const matchTimer  = useRef(null);
 
@@ -380,6 +381,19 @@ export default function App() {
   useEffect(() => {
     saveLS('monad_tradeToken', tradeToken);
   }, [tradeToken]);
+
+  // Favoriler değişince kaydet
+  useEffect(() => {
+    saveLS('monad_favorites', favorites);
+  }, [favorites]);
+
+  const toggleFavorite = useCallback((trader) => {
+    setFavorites(prev => {
+      const exists = prev.find(f => f.address === trader.address);
+      if (exists) return prev.filter(f => f.address !== trader.address);
+      return [{ ...trader }, ...prev];
+    });
+  }, []);
 
   useEffect(() => {
     if (!isConnected) return;
@@ -572,6 +586,8 @@ export default function App() {
                         onSwipeLeft={handleSwipeLeft}
                         onSwipeRight={handleSwipeRight}
                         onSwipeUp={handleSwipeUp}
+                        isFavorite={favorites.some(f => f.address === trader.address)}
+                        onToggleFavorite={toggleFavorite}
                       />
                     );
                   })}
@@ -619,11 +635,60 @@ export default function App() {
             <Portfolio portfolio={portfolio} />
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 16, paddingBottom: 24 }}>
             <div style={{ padding: '14px 16px', background: 'rgba(123,97,255,0.1)', border: '1px solid rgba(123,97,255,0.25)', borderRadius: 16 }}>
               <p style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#7b61ff', margin: 0 }}>Connected Wallet</p>
               <p style={{ marginTop: 6, fontFamily: 'monospace', fontWeight: 700, color: '#ffffff', wordBreak: 'break-all', fontSize: 12, margin: '6px 0 0' }}>{walletAddress}</p>
             </div>
+            
+            {/* FAVORITES LIST */}
+            <div style={{ padding: '14px 16px', background: 'rgba(247,37,133,0.05)', border: '1px solid rgba(247,37,133,0.15)', borderRadius: 16 }}>
+              <p style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.15em', color: '#f72585', margin: 0 }}>Favorited Traders</p>
+              {favorites.length === 0 ? (
+                <p style={{ marginTop: 6, fontSize: 11, color: 'rgba(255,255,255,0.3)', margin: '6px 0 0' }}>No favorites yet. Swipe or use the heart icon to save traders.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+                  {favorites.map(fav => (
+                    <div
+                      key={fav.address}
+                      onClick={() => window.open(EXPLORER_ADDR_URL(fav.address), '_blank')}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+                        background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
+                        borderRadius: 12, cursor: 'pointer', transition: 'all 0.2s'
+                      }}
+                    >
+                      <div style={{
+                        width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                        background: 'linear-gradient(135deg, #f72585, #7b61ff)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 12, fontWeight: 900, color: '#fff', fontFamily: 'monospace'
+                      }}>
+                        {fav.address.slice(2, 4).toUpperCase()}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: '#fff', fontFamily: 'monospace' }}>
+                          {fav.address.slice(0, 6)}…{fav.address.slice(-4)}
+                        </div>
+                        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {fav.actionText || 'Active on Monad'}
+                        </div>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleFavorite(fav);
+                        }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, fontSize: 16 }}
+                      >
+                        ❤️
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {lastTxHash ? (
               <div style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16 }}>
                 <p style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(255,255,255,0.4)', margin: 0 }}>Last Transaction</p>

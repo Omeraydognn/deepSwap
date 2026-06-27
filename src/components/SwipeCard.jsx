@@ -61,7 +61,7 @@ function getAvatarConfig(addr) {
 }
 
 // Ethereum blockie avatar — adrese göre MonadVision tarzı piksel resim
-function BlockieAvatar({ addr, size = 120 }) {
+export function BlockieAvatar({ addr, size = 120 }) {
   const [loaded, setLoaded] = useState(false);
   const [error,  setError]  = useState(false);
   const config = getAvatarConfig(addr);
@@ -233,7 +233,7 @@ function GlowBar({ value, color, height = 3 }) {
 }
 
 const SwipeCard = forwardRef(function SwipeCard(
-  { trader, stackIndex = 0, isTopCard = false, onSwipeLeft, onSwipeRight, onSwipeUp },
+  { trader, stackIndex = 0, isTopCard = false, onSwipeLeft, onSwipeRight, onSwipeUp, isFavorite, onToggleFavorite },
   ref
 ) {
   const [swipeDir, setSwipeDir] = useState(null);
@@ -454,6 +454,7 @@ const SwipeCard = forwardRef(function SwipeCard(
           position: 'absolute', top: 16, left: 16, right: 16,
           zIndex: 10,
           display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+          pointerEvents: 'none',
         }}>
           {/* Tier */}
           <div style={{
@@ -471,27 +472,55 @@ const SwipeCard = forwardRef(function SwipeCard(
             </span>
           </div>
 
-          {/* Live indicator */}
-          {trader.isLive && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 5,
-              background: 'rgba(0,0,0,0.45)',
-              backdropFilter: 'blur(16px)',
-              border: '1px solid rgba(0,245,160,0.3)',
-              borderRadius: 50,
-              padding: '6px 12px',
-            }}>
+          {/* Right side icons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, pointerEvents: 'auto' }}>
+            {/* Live indicator */}
+            {trader.isLive && (
               <div style={{
-                width: 6, height: 6, borderRadius: '50%',
-                background: '#00f5a0',
-                boxShadow: '0 0 8px #00f5a0',
-                animation: 'live-pulse 2s ease-in-out infinite',
-              }} />
-              <span style={{ fontSize: 9, fontWeight: 800, color: '#00f5a0', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                Live
-              </span>
-            </div>
-          )}
+                display: 'flex', alignItems: 'center', gap: 5,
+                background: 'rgba(0,0,0,0.45)',
+                backdropFilter: 'blur(16px)',
+                border: '1px solid rgba(0,245,160,0.3)',
+                borderRadius: 50,
+                padding: '6px 12px',
+              }}>
+                <div style={{
+                  width: 6, height: 6, borderRadius: '50%',
+                  background: '#00f5a0',
+                  boxShadow: '0 0 8px #00f5a0',
+                  animation: 'live-pulse 2s ease-in-out infinite',
+                }} />
+                <span style={{ fontSize: 9, fontWeight: 800, color: '#00f5a0', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                  Live
+                </span>
+              </div>
+            )}
+            
+            {/* Heart Button */}
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onToggleFavorite?.(trader);
+              }}
+              style={{
+                width: 32, height: 32, borderRadius: 16,
+                background: isFavorite ? 'rgba(255,42,70,0.15)' : 'rgba(0,0,0,0.45)',
+                backdropFilter: 'blur(16px)',
+                border: `1px solid ${isFavorite ? 'rgba(255,42,70,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', transition: 'all 0.2s',
+                boxShadow: isFavorite ? '0 0 16px rgba(255,42,70,0.4)' : 'none',
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill={isFavorite ? '#ff2a46' : 'none'} stroke={isFavorite ? '#ff2a46' : 'rgba(255,255,255,0.7)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* ── ORTA: Profil adı ve adres (arka plan üstünde, fade bölgesinde) ── */}

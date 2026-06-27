@@ -69,10 +69,58 @@ export async function fetchTokenPairData(tokenAddress) {
 export async function fetchMonadTrendingTokens(limit = 20) {
   const data = await dexFetch('/latest/dex/search?q=MON');
   const pairs = Array.isArray(data) ? data : data?.pairs ?? [];
-  return pairs
-    .filter((p) => p.chainId === 'monad')
-    .slice(0, limit)
-    .map(normalizePair);
+  
+  // Mock Meme/New tokens simulating newbie 5h/10h tokens
+  const mockMemes = [
+    {
+      chainId: 'monad',
+      pairAddress: '0xmockpepe123',
+      baseToken: { address: '0xpepe', symbol: 'PEPE', name: 'Pepe' },
+      quoteToken: { address: '0xmon', symbol: 'MON', name: 'Monad' },
+      priceUsd: '0.00042',
+      priceChange: { h24: 154.2 },
+      volume: { h24: 1205000 },
+      pairCreatedAt: Date.now() - 5 * 60 * 60 * 1000, // 5 hours ago
+      info: { imageUrl: 'https://dd.dexscreener.com/ds-data/tokens/ethereum/0x6982508145454ce325ddbe47a25d4ec3d2311933.png' }
+    },
+    {
+      chainId: 'monad',
+      pairAddress: '0xmockwif123',
+      baseToken: { address: '0xwif', symbol: 'WIF', name: 'dogwifhat' },
+      quoteToken: { address: '0xmon', symbol: 'MON', name: 'Monad' },
+      priceUsd: '2.45',
+      priceChange: { h24: 82.1 },
+      volume: { h24: 3400000 },
+      pairCreatedAt: Date.now() - 10 * 60 * 60 * 1000, // 10 hours ago
+      info: { imageUrl: 'https://dd.dexscreener.com/ds-data/tokens/solana/ekpQGSJtjJVq124Dtz4x2DCDg8t21YvK2sS1xM61zS_5.png' }
+    },
+    {
+      chainId: 'monad',
+      pairAddress: '0xmockchad123',
+      baseToken: { address: '0xchad', symbol: 'CHAD', name: 'GigaChad' },
+      quoteToken: { address: '0xmon', symbol: 'MON', name: 'Monad' },
+      priceUsd: '0.051',
+      priceChange: { h24: 450.5 },
+      volume: { h24: 890000 },
+      pairCreatedAt: Date.now() - 2 * 60 * 60 * 1000, // 2 hours ago
+      info: { imageUrl: 'https://dd.dexscreener.com/ds-data/tokens/ethereum/0x6b89b97169a797d94f057f4a0b01e2ca303155e4.png' }
+    },
+    {
+      chainId: 'monad',
+      pairAddress: '0xmockjotchua123',
+      baseToken: { address: '0xjotchua', symbol: 'JOTCHUA', name: 'Baby Jotchua' },
+      quoteToken: { address: '0xmon', symbol: 'MON', name: 'Monad' },
+      priceUsd: '0.0012',
+      priceChange: { h24: 1250.0 },
+      volume: { h24: 560000 },
+      pairCreatedAt: Date.now() - 1 * 60 * 60 * 1000, // 1 hour ago
+      info: { imageUrl: 'https://cdn.dexscreener.com/cms/images/FV9vlr_PRu-oJzED?width=64&height=64&fit=crop&quality=95&format=auto' }
+    }
+  ];
+
+  const realPairs = pairs.filter((p) => p.chainId === 'monad');
+  const combined = [...mockMemes, ...realPairs].slice(0, limit);
+  return combined.map(normalizePair);
 }
 
 /**

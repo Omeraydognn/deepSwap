@@ -22,6 +22,10 @@ export const SWAP_TOKENS = [
   { symbol: 'MON',  label: 'MON',  icon: '◈', color: '#7b61ff', address: null  },
   { symbol: 'USDC', label: 'USDC', icon: '$', color: '#00f5a0', address: CONTRACTS.USDC },
   { symbol: 'WETH', label: 'WETH', icon: 'Ξ', color: '#4cc9f0', address: CONTRACTS.WETH },
+  { symbol: 'PEPE', label: 'PEPE', icon: '🐸', color: '#16a34a', address: null },
+  { symbol: 'WIF',  label: 'WIF',  icon: '🐶', color: '#f59e0b', address: null },
+  { symbol: 'CHAD', label: 'CHAD', icon: '🗿', color: '#dc2626', address: null },
+  { symbol: 'JOTCHUA', label: 'JOTCHUA', icon: '🐶', color: '#d97706', address: null }
 ];
 
 export function isMetaMaskAvailable() {
