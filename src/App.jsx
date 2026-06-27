@@ -592,7 +592,7 @@ export default function App() {
       </div>
 
       {/* ── MOBILE HEADER ── */}
-      <header className="mobile-header">
+      <header className="mobile-header" style={activeChat ? { display: 'none' } : {}}>
         <div>
           <div className="mobile-header-subtitle">MONAD SWIPE</div>
           <div className="mobile-header-title">
@@ -704,13 +704,13 @@ export default function App() {
             )}
           </div>
         ) : activeTab === 'inbox' ? (
-          <div className="h-full overflow-hidden -mx-4 -mb-4">
+          <div className="h-full overflow-hidden -mx-4" style={activeChat ? { marginBottom: -16 } : {}}>
             {activeChat ? (
-              <Chat 
-                trader={activeChat} 
-                initialMessages={messages[activeChat.address] || []} 
-                onBack={() => setActiveChat(null)} 
-                onUpdateMessages={(addr, msgs) => setMessages(prev => ({ ...prev, [addr]: msgs }))} 
+              <Chat
+                trader={activeChat}
+                initialMessages={messages[activeChat.address] || []}
+                onBack={() => setActiveChat(null)}
+                onUpdateMessages={(addr, msgs) => setMessages(prev => ({ ...prev, [addr]: msgs }))}
               />
             ) : (
               <Inbox matches={matches} lastMessages={messages} onOpenChat={setActiveChat} />
@@ -799,7 +799,7 @@ export default function App() {
       </main>
 
       {/* ── BOTTOM NAV ── */}
-      <nav className="bottom-nav">
+      <nav className="bottom-nav" style={activeChat ? { display: 'none' } : {}}>
         {TABS.map((tab) => {
           const isActive = activeTab === tab.id;
           return (
