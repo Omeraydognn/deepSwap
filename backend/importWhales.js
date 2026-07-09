@@ -74,6 +74,6 @@ for (const raw of addrs) {
     bad += 1;
     console.warn(`[import] SKIP ${addr.slice(0, 12)}… — ${e.message}`);
   }
-  await sleep(150);
+  await sleep(Number(process.env.IMPORT_DELAY_MS || 150));
 }
 console.log(`[import] done · ${ok} registered · ${bad} skipped · registry now ${db.loadWhaleRegistry().length} wallets`);
