@@ -6,7 +6,7 @@ import WatchlistPanel from './components/WatchlistPanel';
 import CuratedWhales from './components/CuratedWhales';
 import ProfilePage from './components/ProfilePage';
 import TurboPanel from './components/TurboPanel';
-import { hasTurboAgreement, turboWalletExists, turboCopyBuy, turboSellToken } from './services/turboWallet';
+import { hasTurboAgreement, turboWalletExists, turboCopyBuy, turboSellToken, getTurboAddress, getTurboBalance } from './services/turboWallet';
 import curatedWhalesData from './data/curatedWhales.json';
 import { X, Copy, Zap, Settings, Check, AlertTriangle, Info, Layers, WifiOff } from 'lucide-react';
 import { fetchMONPrice, fetchTokensByAddresses } from './services/dexscreenerApi';
@@ -21,7 +21,6 @@ import {
   connectWallet,
   getConnectedAccount,
   sellToken,
-  getMonBalance,
   isWalletAvailable,
   onAccountsChanged,
   disconnectWallet,
@@ -263,8 +262,11 @@ export default function App() {
   const [leaderboard, setLeaderboard] = useState([]);
   const [lbMode, setLbMode] = useState('rankings');
   const [showTradeSettings, setShowTradeSettings] = useState(false);
-  // Turbo 1-swipe trading: agreement + local trading wallet → no per-trade popups
+  // Turbo 1-swipe trading: agreement + local trading wallet → no per-trade popups.
+  // The Turbo wallet IS the app's primary account on both chains — the external
+  // wallet (MetaMask/Phantom) is only a funding source / withdraw destination.
   const [turboOpen, setTurboOpen] = useState(false);
+  const [turboAddr, setTurboAddr] = useState(() => getTurboAddress());
   const pendingTradeRef = useRef(null); // swipe that triggered first-time Turbo setup — replayed after funding
   // USD scale differs per chain, so the tier choice is stored per chain too
   const DECKTIER_LS = LSK('deckTier', 'monad_deckTier');
@@ -372,10 +374,10 @@ export default function App() {
 
   const removeCard = useCallback((trader) => setCards((prev) => prev.filter((c) => c.id !== trader.id)), []);
 
-  const refreshBalance = useCallback((addr) => {
-    const a = addr || walletAddress;
-    if (!a) return;
-    getMonBalance(a).then((b) => {
+  // The balance the app runs on is the TURBO wallet's — it's what swipes spend.
+  const refreshBalance = useCallback(() => {
+    if (!turboAddr) { setMonBalance(null); return; }
+    getTurboBalance().then((b) => {
       if (b == null) return;
       setMonBalance(b);
       // record a real balance snapshot for the history chart (throttled to ~1/min)
@@ -388,14 +390,13 @@ export default function App() {
         return next;
       });
     });
-  }, [walletAddress]);
+  }, [turboAddr]);
 
   useEffect(() => {
-    if (!walletAddress) { setMonBalance(null); return; }
-    refreshBalance(walletAddress);
-    const id = setInterval(() => refreshBalance(walletAddress), 20000);
+    refreshBalance();
+    const id = setInterval(refreshBalance, 20000);
     return () => clearInterval(id);
-  }, [walletAddress, refreshBalance]);
+  }, [refreshBalance]);
 
   const doConnect = useCallback(async () => {
     if (!isWalletAvailable()) { showToast('no_wallet'); window.open(WALLET_INSTALL_URL, '_blank'); return false; }
@@ -475,6 +476,7 @@ export default function App() {
       showToast('copy_pending', `⚡ Copying $${trader.tokenSymbol}…`);
       const res = await turboCopyBuy(trader.tokenAddress, amountMon, { preferredFee: trader.feeTier, preferredDex: trader.dex, slippageBps });
       recordBuy(trader, amountMon, action, res);
+      refreshBalance();
     } catch (err) {
       console.error('[Turbo] copy failed:', err.message, err);
       if (err.message === 'INSUFFICIENT_FUNDS') {
@@ -487,7 +489,7 @@ export default function App() {
       else if (err.message === 'SWAP_REVERT') showToast('tx_failed', 'Swap reverted — try higher slippage');
       else showToast('tx_error');
     }
-  }, [monPriceUsd, slippageBps, recordBuy]);
+  }, [monPriceUsd, slippageBps, recordBuy, refreshBalance]);
 
   const handleDisconnect = useCallback(() => {
     disconnectWallet();
@@ -520,6 +522,7 @@ export default function App() {
         setLastTxHash(hash);
         showToast('sell_sent');
         setPortfolio((prev) => prev.filter((x) => x.id !== p.id));
+        refreshBalance();
       } catch (err) {
         const m = err.message;
         if (m === 'NO_BALANCE') showToast('sell_nobal');
@@ -568,7 +571,7 @@ export default function App() {
 
   // ── Auto stop-loss / take-profit: watch live token prices, sell when a target is crossed ──
   useEffect(() => {
-    if (!walletAddress) return;
+    if (!turboAddr && !walletAddress) return; // turbo positions sell keyless; legacy ones need the wallet
     let alive = true;
     const check = async () => {
       if (!settingsRef.current.autoSell) return;
@@ -629,7 +632,7 @@ export default function App() {
     <div className="app-container">
       <TurboPanel
         open={turboOpen}
-        onClose={() => setTurboOpen(false)}
+        onClose={() => { setTurboOpen(false); setTurboAddr(getTurboAddress()); refreshBalance(); }}
         walletAddress={walletAddress}
         onConnect={doConnect}
         showToast={showToast}
@@ -638,6 +641,8 @@ export default function App() {
           const pending = pendingTradeRef.current;
           pendingTradeRef.current = null;
           setTurboOpen(false);
+          setTurboAddr(getTurboAddress());
+          refreshBalance();
           if (pending) sendCopy(pending.trader, pending.amountMon, pending.action);
         }}
       />
@@ -683,8 +688,11 @@ export default function App() {
               );
             })}
           </div>
-          <button onClick={() => { if (!isConnected) doConnect(); }} className={`connect-btn ${isConnected ? 'connected' : ''}`} title={isConnected ? walletAddress : `Connect ${WALLET_NAME}`}>
-            {isConnected ? (<><div style={{ width: 6, height: 6, borderRadius: '50%', background: '#00f5a0', boxShadow: '0 0 8px #00f5a0' }} />{walletAddress.slice(0, 5)}…{walletAddress.slice(-4)}</>) : (isConnecting ? 'Connecting…' : 'Connect')}
+          {/* Turbo wallet IS the account — the button opens deposit/withdraw/manage */}
+          <button onClick={() => setTurboOpen(true)} className={`connect-btn ${turboAddr ? 'connected' : ''}`} title={turboAddr ? `Turbo wallet ${turboAddr}` : 'Set up Turbo 1-swipe trading'}>
+            {turboAddr
+              ? (<><span style={{ fontSize: 11 }}>⚡</span>{monBalance != null ? `${monBalance.toFixed(2)} ${ACTIVE.nativeSymbol}` : `${turboAddr.slice(0, 5)}…${turboAddr.slice(-4)}`}</>)
+              : (<><span style={{ fontSize: 11 }}>⚡</span>Turbo</>)}
           </button>
         </div>
       </header>
@@ -698,7 +706,7 @@ export default function App() {
           {activeTab === 'deck' ? `${deckCards.length} live signals` :
            activeTab === 'leaderboard' ? `${curatedWhalesList.length} tracked whales` :
            activeTab === 'portfolio' ? `${portfolio.length} position${portfolio.length === 1 ? '' : 's'}` :
-           (walletAddress ? `${walletAddress.slice(0, 5)}…${walletAddress.slice(-4)}` : 'not connected')}
+           (turboAddr ? `⚡ ${turboAddr.slice(0, 5)}…${turboAddr.slice(-4)}` : 'turbo not set up')}
         </span>
       </div>
 
@@ -780,7 +788,7 @@ export default function App() {
           <div className="h-full px-1"><Portfolio portfolio={portfolio} monPriceUsd={monPriceUsd} tradeAmount={tradeAmount} autoSell={settings.autoSell} onRemove={removePosition} onBuyMore={buyMorePosition} onSetTargets={setPositionTargets} onSell={sellPosition} /></div>
         ) : (
           <ProfilePage
-            walletAddress={walletAddress} monBalance={monBalance} monPriceUsd={monPriceUsd}
+            walletAddress={turboAddr} monBalance={monBalance} monPriceUsd={monPriceUsd}
             portfolio={portfolio} watchlistCount={watchlistView.length} balanceHistory={balanceHistory}
             settings={settings} updateSetting={updateSetting}
             lastTxHash={lastTxHash} indexerUp={indexerUp}

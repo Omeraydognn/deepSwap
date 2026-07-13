@@ -27,6 +27,7 @@ export default function TurboPanel({ open, onClose, walletAddress, onConnect, on
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [exported, setExported] = useState(null);
+  const [dest, setDest] = useState(''); // withdraw destination (prefilled from the connected wallet)
 
   const refresh = useCallback(() => { getTurboBalance().then(setBalance); }, []);
 
@@ -38,7 +39,8 @@ export default function TurboPanel({ open, onClose, walletAddress, onConnect, on
       if (!turboWalletExists()) ensureTurboWallet();
       setStep('fund'); refresh();
     } else { setStep('terms'); setAgreed(false); }
-  }, [open, refresh]);
+    setDest((d) => d || walletAddress || '');
+  }, [open, refresh, walletAddress]);
 
   useEffect(() => {
     if (!open || step !== 'fund') return;
@@ -76,10 +78,11 @@ export default function TurboPanel({ open, onClose, walletAddress, onConnect, on
     } finally { setBusy(false); }
   };
   const doWithdraw = async () => {
-    if (!walletAddress) { showToast?.('tx_error', 'Connect your main wallet first'); return; }
+    const to = (dest || walletAddress || '').trim();
+    if (!to) { showToast?.('tx_error', 'Enter a withdraw address'); return; }
     setBusy(true);
     try {
-      const { amount: out } = await withdrawTurbo(walletAddress);
+      const { amount: out } = await withdrawTurbo(to);
       showToast?.('tx_sent', `Withdrew ${out.toFixed(4)} ${sym}`);
       refresh();
     } catch (e) {
@@ -156,8 +159,14 @@ export default function TurboPanel({ open, onClose, walletAddress, onConnect, on
               <button onClick={doDeposit} disabled={busy} style={{ ...btn(true), width: '100%', opacity: busy ? 0.6 : 1 }}>
                 {busy ? 'Waiting…' : `Deposit ${amount || '—'} ${sym}`}
               </button>
+              <p style={{ fontSize: 10, color: 'var(--color-pebble)', fontWeight: 600, lineHeight: 1.5, margin: '6px 0 0' }}>
+                Or send {sym} directly to the address above from any wallet or exchange — it lands in Turbo automatically.
+              </p>
 
-              <div style={{ ...row, marginTop: 14 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-pebble)', textTransform: 'uppercase', letterSpacing: '0.08em', margin: '14px 0 6px' }}>Withdraw to</div>
+              <input type="text" placeholder={`Your ${sym} address`} value={dest} onChange={(e) => setDest(e.target.value)}
+                style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 10, border: '1px solid var(--color-silver-lining)', background: 'var(--color-frost-shadow)', color: 'var(--color-midnight-ink)', fontSize: 11, fontFamily: '"JetBrains Mono", monospace', fontWeight: 600, outline: 'none', marginBottom: 8 }} />
+              <div style={{ ...row }}>
                 <button onClick={doWithdraw} disabled={busy} style={{ ...btn(false), display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                   <ArrowUpRight size={13} /> Withdraw all
                 </button>
