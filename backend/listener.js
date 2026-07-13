@@ -34,7 +34,7 @@ const PORT = Number(process.env.PORT || 8082);
 const server = http.createServer();
 // Pro whale gating is USD-denominated: a trade only hits the deck if it moves
 // real money (WHALE_MIN_USD), OR it comes from a known/registered big wallet.
-const WHALE_MIN_USD = Number(process.env.WHALE_MIN_USD || 25);     // non-registered floor, in USD (Monad-scale)
+const WHALE_MIN_USD = Number(process.env.WHALE_MIN_USD || 100);    // non-registered floor, in USD (Monad-scale)
 const REGISTERED_MIN_MON = Number(process.env.REGISTERED_MIN_MON || 100); // dust floor for known whales
 const WHALE_MIN_MON = Number(process.env.WHALE_MIN_MON || 5);      // absolute pre-filter (cheap check)
 const INCLUDE_SELLS = process.env.INCLUDE_SELLS === '1'; // deck shows copyable BUYs only by default
@@ -57,7 +57,7 @@ const QUOTE_TOKENS = new Map([
 ]);
 // High-liquidity floor (USD) — only surface tokens with a real market; filters junk.
 const MIN_LIQ_USD = Number(process.env.MIN_LIQ_USD || 25000);
-const REGISTERED_MIN_USD = Number(process.env.REGISTERED_MIN_USD || 10); // dust floor for known whales
+const REGISTERED_MIN_USD = Number(process.env.REGISTERED_MIN_USD || 50); // dust floor for known whales — this is a WHALE app, no sub-$50 cards
 
 // ── Manually-pinned VIP wallets (always tracked, regardless of discovery) ──
 const VIP_WHALES = new Set([

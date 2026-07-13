@@ -17,8 +17,9 @@ export const CHAINS = {
     explorer: 'https://monadscan.com', txPath: 'tx', addrPath: 'address',
     indexerHttp: env2.VITE_INDEXER_HTTP || 'https://deepswap-monad-bot2.onrender.com',
     indexerWs: env2.VITE_INDEXER_WS || 'wss://deepswap-monad-bot2.onrender.com',
-    // Deck size tiers (USD) — calibrated to real Monad trade sizes
-    tiers: { all: 0, big: 50, shark: 150, whale: 300 },
+    // Deck size tiers (USD) — EXCLUSIVE ranges (big < shark < whale); 'all' is
+    // the hard floor: nothing under $50 ever reaches the deck (whale app).
+    tiers: { all: 50, big: 50, shark: 150, whale: 300 },
     copySupported: true,                               // MetaMask + PancakeSwap/Uniswap v3
     // Quick-pick copy amounts (native units) + gas headroom kept out of Max
     copyTiers: [{ label: '0.1', value: 0.1 }, { label: '1', value: 1 }, { label: '5', value: 5 }],
@@ -34,8 +35,9 @@ export const CHAINS = {
     indexerWs: env2.VITE_SOL_INDEXER_WS || 'wss://deepswap-solana-bot.onrender.com',
     rpcUrl: env2.VITE_SOL_RPC || 'https://api.mainnet-beta.solana.com',
     jupiterApi: 'https://lite-api.jup.ag/swap/v1', // live Jupiter aggregator (quote + swap tx)
-    // Solana-scale tiers (much bigger single swaps)
-    tiers: { all: 0, big: 1000, shark: 5000, whale: 20000 },
+    // Solana-scale tiers (much bigger single swaps) — exclusive ranges; 'all'
+    // floor mirrors the indexer's TRACK_MIN_USD.
+    tiers: { all: 150, big: 1000, shark: 5000, whale: 20000 },
     copySupported: true,                               // Phantom + Jupiter aggregator
     // SOL trades ~100x MON's unit value — quick picks scaled accordingly
     copyTiers: [{ label: '0.05', value: 0.05 }, { label: '0.25', value: 0.25 }, { label: '1', value: 1 }],

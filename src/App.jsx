@@ -195,13 +195,23 @@ function TradeSettingsPopover({ open, onClose, amount, onChangeAmount, slippageB
 const STATIC_CURATED = ACTIVE.id === 'monad' ? (curatedWhalesData.whales || []) : [];
 
 // Deck size-tier filter (USD value of the trade) — thresholds are per-chain.
-const TIER_MIN_USD = ACTIVE.tiers;
+// Tiers are EXCLUSIVE ranges: Big = [big, shark), Shark = [shark, whale),
+// Whale = [whale, ∞). 'All' shows everything above the hard floor (tiers.all)
+// — nothing below that floor ever reaches the deck.
+const TIERS_USD = ACTIVE.tiers;
 const DECK_TIERS = [
   { id: 'all', label: 'All', color: 'var(--text-3)' },
   { id: 'big', label: 'Big', color: '#38bdf8' },
   { id: 'shark', label: 'Shark', color: '#a78bfa' },
   { id: 'whale', label: 'Whale', color: '#22d3ee' },
 ];
+function inTier(usd, id) {
+  if (usd < (TIERS_USD.all || 0)) return false; // global floor, every tier
+  if (id === 'big') return usd >= TIERS_USD.big && usd < TIERS_USD.shark;
+  if (id === 'shark') return usd >= TIERS_USD.shark && usd < TIERS_USD.whale;
+  if (id === 'whale') return usd >= TIERS_USD.whale;
+  return true; // 'all'
+}
 
 export default function App() {
   const clock = useClock();
@@ -580,7 +590,7 @@ export default function App() {
     c.side !== 'SELL' && // exits aren't copyable — they only power per-position auto-close
     (!settings.hideStables || !c.isStable) &&
     (c.amountMon ?? 0) >= (settings.minWhaleMon || 0) &&
-    usdOf(c) >= (TIER_MIN_USD[deckTier] || 0)
+    inTier(usdOf(c), deckTier)
   );
 
   return (
@@ -671,7 +681,7 @@ export default function App() {
             <div className="seg-track wide" style={{ marginBottom: 12, flexShrink: 0 }}>
               {DECK_TIERS.map((tier) => {
                 const active = deckTier === tier.id;
-                const cnt = cards.filter((c) => c.side !== 'SELL' && (!settings.hideStables || !c.isStable) && (c.amountMon ?? 0) >= (settings.minWhaleMon || 0) && usdOf(c) >= TIER_MIN_USD[tier.id]).length;
+                const cnt = cards.filter((c) => c.side !== 'SELL' && (!settings.hideStables || !c.isStable) && (c.amountMon ?? 0) >= (settings.minWhaleMon || 0) && inTier(usdOf(c), tier.id)).length;
                 return (
                   <button key={tier.id} type="button" className={`seg-item ${active ? 'on' : ''}`} onClick={() => setDeckTier(tier.id)}>
                     {tier.id !== 'all' && <span style={{ width: 6, height: 6, borderRadius: '50%', background: active ? '#fff' : tier.color, display: 'inline-block', marginRight: 5 }} />}
