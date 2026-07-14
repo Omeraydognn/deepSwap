@@ -261,6 +261,10 @@ export default function App() {
   const settingsRef = useRef(settings);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
   const sellingRef = useRef(new Set());
+  // After a failed auto-sell, back off (id → retry-after ms) so SL/TP and
+  // whale-exit don't retry every cycle and spam the deck with errors.
+  const sellCooldownRef = useRef(new Map());
+  const AUTO_SELL_COOLDOWN_MS = 5 * 60 * 1000;
   const whaleExitRef = useRef(null); // "whale sold → close my copy" handler (wired below)
   const [leaderboard, setLeaderboard] = useState([]);
   const [lbMode, setLbMode] = useState('rankings');
@@ -603,15 +607,17 @@ export default function App() {
   useEffect(() => {
     whaleExitRef.current = (card) => {
       const norm = (s) => (ACTIVE.kind === 'evm' ? (s || '').toLowerCase() : (s || ''));
+      const now = Date.now();
       const matches = portfolio.filter((p) =>
         p.sellOnWhaleExit &&
         p.token?.address && norm(p.token.address) === norm(card.tokenAddress) &&
         p.trader?.address && norm(p.trader.address) === norm(card.trader) &&
-        !sellingRef.current.has(p.id));
+        !sellingRef.current.has(p.id) &&
+        (sellCooldownRef.current.get(p.id) ?? 0) < now);
       for (const p of matches) {
         sellingRef.current.add(p.id); // guard against duplicate sells
         showToast('whale_exit', `Whale sold $${p.token.symbol} — closing your copy…`);
-        sellPosition(p).catch(() => sellingRef.current.delete(p.id)); // allow retry on the whale's next sell
+        sellPosition(p).catch(() => { sellingRef.current.delete(p.id); sellCooldownRef.current.set(p.id, Date.now() + AUTO_SELL_COOLDOWN_MS); });
       }
     };
   }, [portfolio, sellPosition]);
@@ -622,7 +628,8 @@ export default function App() {
     let alive = true;
     const check = async () => {
       if (!settingsRef.current.autoSell) return;
-      const open = portfolio.filter((p) => p.token?.address && p.tokensRaw && (p.stopLossPct != null || p.takeProfitPct != null) && !sellingRef.current.has(p.id));
+      const nowTs = Date.now();
+      const open = portfolio.filter((p) => p.token?.address && p.tokensRaw && (p.stopLossPct != null || p.takeProfitPct != null) && !sellingRef.current.has(p.id) && (sellCooldownRef.current.get(p.id) ?? 0) < nowTs);
       if (!open.length) return;
       const addrs = [...new Set(open.map((p) => p.token.address))];
       let priceMap = {};
@@ -645,7 +652,7 @@ export default function App() {
         sellingRef.current.add(p.id); // guard against duplicate popups
         showToast(hitSL ? 'sl_hit' : 'tp_hit', `$${p.token.symbol} ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}% — closing…`);
         try { await sellPosition(p); }
-        catch { sellingRef.current.delete(p.id); } // let it retry on the next crossing
+        catch { sellingRef.current.delete(p.id); sellCooldownRef.current.set(p.id, Date.now() + AUTO_SELL_COOLDOWN_MS); } // back off before retrying
       }
     };
     const id = setInterval(check, 25000);

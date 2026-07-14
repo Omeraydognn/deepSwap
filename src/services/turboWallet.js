@@ -20,7 +20,7 @@
 import { Keypair, VersionedTransaction, Transaction, SystemProgram, PublicKey } from '@solana/web3.js';
 import { Wallet as EthWallet, JsonRpcProvider } from 'ethers';
 import { ACTIVE, MONAD_MAINNET, DEFAULT_SLIPPAGE_BPS } from '../config/chain.js';
-import { buildBuyTx, buildSellPlan, getTokenInfo as evmTokenInfo } from './wallet.js';
+import { buildBuyTx, buildSellPlan, getTokenInfo as evmTokenInfo, sellAllowance, buildApproveTx } from './wallet.js';
 import {
   rpc as solRpc, jupQuote, jupSwapTx, confirmOnChain, actualTokenDelta,
   mintDecimals, dexLabel, getTokenInfo as solTokenInfo, sendRawTransaction,
@@ -206,14 +206,35 @@ export async function turboSellToken(tokenAddress, opts = {}) {
     return { hash, dex: dexLabel(quote), amountIn: amountIn.toString(), expectedOut: quote.outAmount, turbo: true };
   }
   const w = evmWallet();
-  const plan = await buildSellPlan(w.address, tokenAddress, opts);
+  const from = w.address;
+  // Determine how much we're selling (the v3 quote needs allowance to succeed,
+  // so we must know the amount and approve BEFORE quoting).
+  const { raw: balance } = await evmTokenInfo(from, tokenAddress);
+  if (balance <= 0n) throw new Error('NO_BALANCE');
+  let amountIn = balance;
+  if (opts.amountRaw) { try { const want = BigInt(opts.amountRaw); if (want > 0n && want < balance) amountIn = want; } catch {} }
+
+  // Approve the sell router FIRST — otherwise the quote's simulated transferFrom
+  // reverts and every route reads as 0 ("no liquidity"). Approve the DEX the
+  // position was bought on (falls back to PancakeV3).
+  const dexKey = (opts.preferredDex === 'PancakeV3' || opts.preferredDex === 'UniswapV3') ? opts.preferredDex : 'PancakeV3';
+  const allow = await sellAllowance(tokenAddress, from, dexKey);
+  if (allow < amountIn) {
+    const ap = buildApproveTx(tokenAddress, dexKey);
+    const a = await w.sendTransaction({ to: ap.to, data: ap.data });
+    const rec = await a.wait();
+    if (!rec || rec.status === 0) throw new Error('APPROVE_FAILED');
+  }
+
+  const plan = await buildSellPlan(from, tokenAddress, { ...opts, amountRaw: amountIn.toString() });
+  // If a fallback route was chosen that still needs approval, cover it too.
   if (plan.approveTx) {
-    const a = await w.sendTransaction({ ...plan.approveTx });
+    const a = await w.sendTransaction({ to: plan.approveTx.to, data: plan.approveTx.data });
     const rec = await a.wait();
     if (!rec || rec.status === 0) throw new Error('APPROVE_FAILED');
   }
   let gasLimit;
-  try { gasLimit = await w.provider.estimateGas({ ...plan.tx, from: w.address }); }
+  try { gasLimit = await w.provider.estimateGas({ ...plan.tx, from }); }
   catch (e) { throw Object.assign(new Error('SELL_REVERT'), { cause: e }); }
   const sent = await w.sendTransaction({ ...plan.tx, gasLimit });
   const rec = await sent.wait();

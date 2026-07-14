@@ -332,6 +332,21 @@ export async function buildSellPlan(from, tokenIn, opts = {}) {
   };
 }
 
+// ── Sell-side allowance helpers (used by the Turbo local signer) ──
+// The v3 sell quote simulates a real transferFrom, so it silently returns 0
+// (looks like "no liquidity") until the router is approved. The Turbo path
+// approves the sell router FIRST, then quotes.
+export function sellRouterFor(dexKey) {
+  const route = ROUTES[dexKey] || ROUTES.PancakeV3;
+  return route.router;
+}
+export async function sellAllowance(tokenIn, owner, dexKey) {
+  return getAllowance(tokenIn, owner, sellRouterFor(dexKey));
+}
+export function buildApproveTx(tokenIn, dexKey) {
+  return { to: tokenIn, value: 0n, data: SEL_APPROVE + addr32(sellRouterFor(dexKey)) + pad32(hexBig(MAX_UINT)) };
+}
+
 // ── SELL: close a position by swapping the token back to native MON ──
 
 const first32 = (res) => (res && res !== '0x' ? BigInt('0x' + strip(res).slice(0, 64)) : 0n);
