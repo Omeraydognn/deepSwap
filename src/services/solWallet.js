@@ -109,11 +109,52 @@ export async function jupSwapTx(quoteResponse, userPublicKey) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     signal: AbortSignal.timeout(15000),
-    body: JSON.stringify({ quoteResponse, userPublicKey, wrapAndUnwrapSol: true, dynamicComputeUnitLimit: true }),
+    body: JSON.stringify({
+      quoteResponse, userPublicKey, wrapAndUnwrapSol: true,
+      dynamicComputeUnitLimit: true,
+      // A real priority fee is what makes the swap actually LAND on a congested
+      // mainnet (esp. via the rate-limited public RPC) instead of silently
+      // timing out. Jupiter auto-sizes it up to this cap.
+      prioritizationFeeLamports: { priorityLevelWithMaxLamports: { maxLamports: 2000000, priorityLevel: 'high', global: false } },
+    }),
   });
   const j = await res.json();
   if (!res.ok || !j.swapTransaction) throw new Error(j.error || 'SWAP_BUILD_FAILED');
-  return j.swapTransaction; // base64 VersionedTransaction
+  // lastValidBlockHeight lets the sender/confirmer know when the blockhash dies
+  return { swapTransaction: j.swapTransaction, lastValidBlockHeight: j.lastValidBlockHeight };
+}
+
+// Robust raw-send for locally-signed txs (the Turbo path). Broadcasts with
+// skipPreflight (public RPC preflight is flaky/rate-limited), re-broadcasts
+// while we wait, and confirms against the tx's lastValidBlockHeight so a
+// dropped tx fails fast instead of hanging. Returns the signature.
+export async function sendRawTransaction(signedTxBytes, lastValidBlockHeight) {
+  const b64 = btoa(String.fromCharCode(...signedTxBytes));
+  const send = () => rpc('sendTransaction', [b64, { encoding: 'base64', skipPreflight: true, maxRetries: 2, preflightCommitment: 'confirmed' }]);
+  let signature = await send();
+  const started = Date.now();
+  while (Date.now() - started < 60000) {
+    try {
+      const r = await rpc('getSignatureStatuses', [[signature], { searchTransactionHistory: true }]);
+      const st = r?.value?.[0];
+      if (st) {
+        if (st.err) throw Object.assign(new Error('TX_FAILED'), { signature });
+        if (st.confirmationStatus === 'confirmed' || st.confirmationStatus === 'finalized') return signature;
+      } else if (lastValidBlockHeight) {
+        // no status yet — if the blockhash has expired the tx will never land
+        try {
+          const h = await rpc('getBlockHeight', [{ commitment: 'confirmed' }]);
+          if (h > lastValidBlockHeight) throw Object.assign(new Error('TX_TIMEOUT'), { signature });
+        } catch (e) { if (e.message === 'TX_TIMEOUT') throw e; }
+      }
+    } catch (e) {
+      if (e.message === 'TX_FAILED' || e.message === 'TX_TIMEOUT') throw e;
+    }
+    // keep re-broadcasting — public RPC drops txs from its mempool aggressively
+    try { await send(); } catch { /* ignore, we already have a signature */ }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  throw Object.assign(new Error('TX_TIMEOUT'), { signature });
 }
 
 async function signAndSend(swapTxB64) {
@@ -203,8 +244,8 @@ export async function copyBuy(from, tokenMint, amountSol, opts = {}) {
   const quote = await jupQuote(WSOL, tokenMint, lamports, slippageBps);
   if (!quote) throw new Error('NO_LIQUIDITY');
 
-  const [swapTx, decimals] = await Promise.all([jupSwapTx(quote, from), mintDecimals(tokenMint)]);
-  const hash = await signAndSend(swapTx);
+  const [{ swapTransaction }, decimals] = await Promise.all([jupSwapTx(quote, from), mintDecimals(tokenMint)]);
+  const hash = await signAndSend(swapTransaction);
   await confirmOnChain(hash); // throws if the swap failed on-chain — no fake fills
   // Position size = tokens actually received on-chain, not the quote's estimate
   const realOut = await actualTokenDelta(hash, from, tokenMint);
@@ -252,8 +293,8 @@ export async function sellToken(from, tokenMint, opts = {}) {
   const quote = await jupQuote(tokenMint, WSOL, amountIn.toString(), slippageBps);
   if (!quote) throw new Error('NO_LIQUIDITY');
 
-  const swapTx = await jupSwapTx(quote, from);
-  const hash = await signAndSend(swapTx);
+  const { swapTransaction } = await jupSwapTx(quote, from);
+  const hash = await signAndSend(swapTransaction);
   await confirmOnChain(hash); // position is only "closed" once the sell landed on-chain
   return {
     hash,

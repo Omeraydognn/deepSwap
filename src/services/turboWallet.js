@@ -23,7 +23,7 @@ import { ACTIVE, MONAD_MAINNET, DEFAULT_SLIPPAGE_BPS } from '../config/chain.js'
 import { buildBuyTx, buildSellPlan, getTokenInfo as evmTokenInfo } from './wallet.js';
 import {
   rpc as solRpc, jupQuote, jupSwapTx, confirmOnChain, actualTokenDelta,
-  mintDecimals, dexLabel, getTokenInfo as solTokenInfo,
+  mintDecimals, dexLabel, getTokenInfo as solTokenInfo, sendRawTransaction,
 } from './solWallet.js';
 
 const AGREED_LS = 'turbo_agreed_v1';           // agreement is global (per device)
@@ -162,11 +162,10 @@ export async function turboCopyBuy(tokenAddress, amountNative, opts = {}) {
     }
     const quote = await jupQuote(WSOL, tokenAddress, Math.round(amountNative * 1e9), opts.slippageBps ?? DEFAULT_SLIPPAGE_BPS);
     if (!quote) throw new Error('NO_LIQUIDITY');
-    const [swapB64, decimals] = await Promise.all([jupSwapTx(quote, from), mintDecimals(tokenAddress)]);
-    const tx = VersionedTransaction.deserialize(Uint8Array.from(atob(swapB64), (c) => c.charCodeAt(0)));
+    const [{ swapTransaction, lastValidBlockHeight }, decimals] = await Promise.all([jupSwapTx(quote, from), mintDecimals(tokenAddress)]);
+    const tx = VersionedTransaction.deserialize(Uint8Array.from(atob(swapTransaction), (c) => c.charCodeAt(0)));
     tx.sign([kp]);
-    const hash = await solRpc('sendTransaction', [btoa(String.fromCharCode(...tx.serialize())), { encoding: 'base64', maxRetries: 3 }]);
-    await confirmOnChain(hash);
+    const hash = await sendRawTransaction(tx.serialize(), lastValidBlockHeight);
     const realOut = await actualTokenDelta(hash, from, tokenAddress);
     return { hash, dex: dexLabel(quote), fee: null, expectedOut: realOut ?? quote.outAmount, amountOutMin: quote.otherAmountThreshold, decimals, turbo: true, turboAddress: from };
   }
@@ -200,11 +199,10 @@ export async function turboSellToken(tokenAddress, opts = {}) {
     if (opts.amountRaw) { try { const want = BigInt(opts.amountRaw); if (want > 0n && want < balance) amountIn = want; } catch {} }
     const quote = await jupQuote(tokenAddress, WSOL, amountIn.toString(), opts.slippageBps ?? DEFAULT_SLIPPAGE_BPS);
     if (!quote) throw new Error('NO_LIQUIDITY');
-    const swapB64 = await jupSwapTx(quote, from);
-    const tx = VersionedTransaction.deserialize(Uint8Array.from(atob(swapB64), (c) => c.charCodeAt(0)));
+    const { swapTransaction, lastValidBlockHeight } = await jupSwapTx(quote, from);
+    const tx = VersionedTransaction.deserialize(Uint8Array.from(atob(swapTransaction), (c) => c.charCodeAt(0)));
     tx.sign([kp]);
-    const hash = await solRpc('sendTransaction', [btoa(String.fromCharCode(...tx.serialize())), { encoding: 'base64', maxRetries: 3 }]);
-    await confirmOnChain(hash);
+    const hash = await sendRawTransaction(tx.serialize(), lastValidBlockHeight);
     return { hash, dex: dexLabel(quote), amountIn: amountIn.toString(), expectedOut: quote.outAmount, turbo: true };
   }
   const w = evmWallet();

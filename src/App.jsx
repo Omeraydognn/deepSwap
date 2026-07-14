@@ -7,7 +7,7 @@ import CuratedWhales from './components/CuratedWhales';
 import ProfilePage from './components/ProfilePage';
 import { hasTurboAgreement, turboWalletExists, turboCopyBuy, turboSellToken, getTurboAddress, getTurboBalance } from './services/turboWallet';
 import curatedWhalesData from './data/curatedWhales.json';
-import { X, Copy, Zap, Settings, Check, AlertTriangle, Info, Layers, WifiOff } from 'lucide-react';
+import { X, Zap, Settings, Check, AlertTriangle, Info, Layers, WifiOff, Heart } from 'lucide-react';
 import { fetchMONPrice, fetchTokensByAddresses } from './services/dexscreenerApi';
 import {
   fetchWhaleDeck,
@@ -54,7 +54,7 @@ function useClock() {
 
 /* ── Toasts ── */
 const TOASTS = {
-  pass:       { msg: 'Skipped',            kind: 'info', color: 'var(--color-midnight-ink)' },
+  pass:       { msg: 'Skipped',            kind: 'info', color: 'var(--surface-2)' },
   copy:       { msg: 'Copy sent',          kind: 'ok',   color: 'var(--color-tidewater-navy)' },
   connect:    { msg: 'Wallet connected',   kind: 'ok',   color: 'var(--color-tidewater-navy)' },
   copy_pending: { msg: 'Confirm in wallet…', kind: 'info', color: 'var(--color-tidewater-navy)' },
@@ -70,7 +70,7 @@ const TOASTS = {
   tp_hit:     { msg: 'Take-profit hit',    kind: 'ok',   color: 'var(--color-tidewater-navy)' },
   sell_pending: { msg: 'Approve sell…',    kind: 'info', color: 'var(--color-tidewater-navy)' },
   sell_sent:  { msg: 'Position closed',    kind: 'ok',   color: 'var(--color-tidewater-navy)' },
-  sell_cancel: { msg: 'Sell cancelled',    kind: 'info', color: 'var(--color-midnight-ink)' },
+  sell_cancel: { msg: 'Sell cancelled',    kind: 'info', color: 'var(--surface-2)' },
   sell_fail:  { msg: 'Sell failed',        kind: 'err',  color: 'var(--color-obsidian)' },
   sell_nobal: { msg: 'No tokens to sell',  kind: 'err',  color: 'var(--color-obsidian)' },
   whale_exit: { msg: 'Whale exited — closing your copy', kind: 'info', color: 'var(--color-tidewater-navy)' },
@@ -275,11 +275,18 @@ export default function App() {
   useEffect(() => { saveLS(DECKTIER_LS, deckTier); }, [deckTier]);
   const topCardRef = useRef(null);
 
-  // Viewport scale
+  // Viewport scale — the phone shell is 393×852. On mobile it fills the screen
+  // (~1). On desktop we ZOOM IN to fill the available height (up to 1.6×) so it
+  // doesn't sit tiny in the middle of a big monitor, while never overflowing
+  // the viewport width or height.
   useEffect(() => {
-    const CONTAINER_H = 852, PADDING = 16;
+    const CONTAINER_W = 393, CONTAINER_H = 852;
     const update = () => {
-      const scale = Math.min(1, (window.innerHeight - PADDING) / CONTAINER_H);
+      const mobile = window.innerWidth < 480;
+      const pad = mobile ? 0 : 40;
+      const byH = (window.innerHeight - pad) / CONTAINER_H;
+      const byW = (window.innerWidth - pad) / CONTAINER_W;
+      const scale = Math.max(0.6, Math.min(byH, byW, mobile ? 1 : 1.6));
       document.documentElement.style.setProperty('--app-scale', scale);
     };
     update();
@@ -635,6 +642,7 @@ export default function App() {
   const usdOf = (c) => (c.amountUsd != null ? c.amountUsd : (c.amountMon || 0) * (monPriceUsd || 0));
   const deckCards = cards.filter((c) =>
     c.side !== 'SELL' && // exits aren't copyable — they only power per-position auto-close
+    c.copyable !== false && // never show trades we can't act on ("watch only")
     (!settings.hideStables || !c.isStable) &&
     (c.amountMon ?? 0) >= (settings.minWhaleMon || 0) &&
     inTier(usdOf(c), deckTier)
@@ -737,7 +745,7 @@ export default function App() {
             <div className="seg-track wide" style={{ marginBottom: 12, flexShrink: 0 }}>
               {DECK_TIERS.map((tier) => {
                 const active = deckTier === tier.id;
-                const cnt = cards.filter((c) => c.side !== 'SELL' && (!settings.hideStables || !c.isStable) && (c.amountMon ?? 0) >= (settings.minWhaleMon || 0) && inTier(usdOf(c), tier.id)).length;
+                const cnt = cards.filter((c) => c.side !== 'SELL' && c.copyable !== false && (!settings.hideStables || !c.isStable) && (c.amountMon ?? 0) >= (settings.minWhaleMon || 0) && inTier(usdOf(c), tier.id)).length;
                 return (
                   <button key={tier.id} type="button" className={`seg-item ${active ? 'on' : ''}`} onClick={() => setDeckTier(tier.id)}>
                     {tier.id !== 'all' && <span style={{ width: 6, height: 6, borderRadius: '50%', background: active ? '#fff' : tier.color, display: 'inline-block', marginRight: 5 }} />}
@@ -773,8 +781,22 @@ export default function App() {
                     <span style={{ position: 'absolute', top: -2, right: -2, fontSize: 8, fontWeight: 700, background: 'var(--color-tidewater-navy)', color: '#fff', borderRadius: 8, padding: '1px 5px', lineHeight: '14px' }}>{tradeAmount}</span>
                   </button>
                   <button type="button" className="btn-pass" onClick={() => swipe('left')} title="Skip"><X size={24} /></button>
-                  <button type="button" className="btn-ape" onClick={() => swipe('up')}><Zap size={14} style={{ marginRight: 6 }} /> ALL IN</button>
-                  <button type="button" className="btn-copy" onClick={() => swipe('right')} title="Copy Trade"><Copy size={22} /></button>
+                  {(() => {
+                    const top = deckCards[0];
+                    const saved = top && favorites.some((f) => (f.address || '').toLowerCase() === (top.address || '').toLowerCase());
+                    return (
+                      <button type="button" className={`btn-like ${saved ? 'saved' : ''}`} title={saved ? 'Saved to watchlist' : 'Save whale to watchlist'}
+                        onClick={() => {
+                          if (!top) return;
+                          const wasSaved = favorites.some((f) => (f.address || '').toLowerCase() === (top.address || '').toLowerCase());
+                          toggleFavorite({ address: top.address, tokenSymbol: top.tokenSymbol });
+                          showToast('copy', wasSaved ? 'Removed from watchlist' : 'Saved to watchlist');
+                        }}>
+                        <Heart size={22} fill={saved ? '#ff5d7d' : 'none'} />
+                      </button>
+                    );
+                  })()}
+                  <button type="button" className="btn-copy" onClick={() => swipe('right')} title="Copy Trade"><Check size={24} strokeWidth={2.6} /></button>
                 </div>
               </>
             ) : (

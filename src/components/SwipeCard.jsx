@@ -197,11 +197,17 @@ const SwipeCard = forwardRef(function SwipeCard(
   };
   const trackEnd = (e) => {
     if (activePointerId.current !== null && e.pointerId !== activePointerId.current) return;
+    // A press with no drag and no swipe = a TAP → flip the card. Detecting it
+    // here (on pointerup) is reliable on touch, where the synthetic click that
+    // powers onClick is often swallowed by the pointer capture.
+    const wasTap = !!startPt.current && !isDragging.current && !firedSwipe.current;
     startPt.current = null; activePointerId.current = null;
     if (!firedSwipe.current) setDragOffset({ x: 0, y: 0 });
     setTimeout(() => setSwipeDir(null), 350);
+    if (wasTap && isTopCard && !showDeepDive) setShowDeepDive(true);
   };
   const handleCardClick = () => {
+    // Desktop mouse fallback — trackEnd already handles touch taps.
     if (!isTopCard || isDragging.current || showDeepDive) return;
     setShowDeepDive(true);
   };
@@ -286,7 +292,7 @@ const SwipeCard = forwardRef(function SwipeCard(
             Tapping the card rotates it 180° like flipping a real card over. ── */}
         <div style={{
           position: 'absolute', inset: 0,
-          transformStyle: 'preserve-3d',
+          transformStyle: 'preserve-3d', WebkitTransformStyle: 'preserve-3d',
           transition: 'transform 0.65s cubic-bezier(0.35,0.1,0.25,1)',
           transform: showDeepDive ? 'rotateY(180deg)' : 'rotateY(0deg)',
         }}>

@@ -396,7 +396,7 @@ body {
   flex-shrink: 0;
 }
 
-.btn-pass, .btn-copy, .btn-ape {
+.btn-pass, .btn-copy, .btn-ape, .btn-like {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -444,28 +444,32 @@ body {
 
 .btn-copy:active { transform: scale(0.94); }
 
-.btn-ape {
+/* Like / save-whale button — adds the whale to the watchlist */
+.btn-like {
+  width: 52px;
   height: 52px;
-  padding: 0 22px;
   border-radius: 100px;
-  background: linear-gradient(135deg, rgba(245, 181, 68, 0.16) 0%, rgba(255, 93, 125, 0.13) 100%);
-  border: 1px solid rgba(245, 181, 68, 0.4);
-  color: var(--gold);
-  font-size: 12px;
-  font-weight: 800;
-  font-family: var(--font-mono);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line-1);
+  color: var(--text-2);
+  backdrop-filter: blur(8px);
 }
 
-.btn-ape:hover {
-  transform: scale(1.05);
-  border-color: rgba(245, 181, 68, 0.8);
-  box-shadow: 0 0 24px rgba(245, 181, 68, 0.3);
-  color: #ffd88a;
+.btn-like:hover {
+  transform: scale(1.06);
+  border-color: rgba(255, 93, 125, 0.55);
+  color: var(--down);
+  background: var(--down-soft);
+  box-shadow: 0 0 18px rgba(255, 93, 125, 0.25);
 }
 
-.btn-ape:active { transform: scale(0.94); }
+.btn-like.saved {
+  border-color: rgba(255, 93, 125, 0.6);
+  background: var(--down-soft);
+  color: var(--down);
+}
+
+.btn-like:active { transform: scale(0.94); }
 
 /* ── Animations ── */
 @keyframes slide-up {
