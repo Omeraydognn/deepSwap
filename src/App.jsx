@@ -666,6 +666,43 @@ export default function App() {
         </div>
       )}
 
+      {/* ── Desktop sidebar (hidden on mobile) — brand, vertical nav, Turbo ── */}
+      <aside className="side-nav">
+        <div className="brand" style={{ padding: '4px 6px 0' }}>
+          <div className="brand-mark">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L20 8.5V15.5L12 22L4 15.5V8.5L12 2Z" stroke="#fff" strokeWidth="1.8" strokeLinejoin="round" fill="rgba(255,255,255,0.14)" />
+              <path d="M8.5 12.5L11 15L15.5 9.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <div>
+            <div className="brand-word">DegenSlide</div>
+            <div className="brand-sub">
+              <span className={`live-dot ${indexerUp ? 'on' : ''}`} />
+              {indexerUp ? `${ACTIVE.label} live` : 'feed offline'} · {clock}
+            </div>
+          </div>
+        </div>
+        <nav className="side-nav-list">
+          {TABS.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button key={tab.id} type="button" className={`side-nav-item ${isActive ? 'active' : ''}`} onClick={() => setActiveTab(tab.id)}>
+                <div className="nav-icon"><tab.Icon active={isActive} /></div>
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+        <button onClick={() => setActiveTab('profile')} className={`side-turbo ${turboAddr ? 'connected' : ''}`} title={turboAddr ? `Turbo wallet ${turboAddr}` : 'Set up Turbo 1-swipe trading'}>
+          <span style={{ fontSize: 13 }}>⚡</span>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {turboAddr ? (monBalance != null ? `${monBalance.toFixed(3)} ${ACTIVE.nativeSymbol}` : `${turboAddr.slice(0, 5)}…${turboAddr.slice(-4)}`) : 'Turbo'}
+          </span>
+        </button>
+      </aside>
+
+      <div className="app-main-col">
       {/* ── App bar: brand identity + wallet ── */}
       <header className="app-bar">
         <div className="brand">
@@ -745,7 +782,7 @@ export default function App() {
             )}
           </div>
         ) : activeTab === 'deck' ? (
-          <div className="flex flex-col h-full w-full relative">
+          <div className="deck-view flex flex-col h-full w-full relative">
             <div className="seg-track wide" style={{ marginBottom: 12, flexShrink: 0 }}>
               {DECK_TIERS.map((tier) => {
                 const active = deckTier === tier.id;
@@ -839,6 +876,7 @@ export default function App() {
           );
         })}
       </nav>
+      </div>{/* /app-main-col */}
     </div>
   );
 }
