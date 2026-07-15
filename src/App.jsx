@@ -5,6 +5,7 @@ import Portfolio from './components/Portfolio';
 import WatchlistPanel from './components/WatchlistPanel';
 import CuratedWhales from './components/CuratedWhales';
 import ProfilePage from './components/ProfilePage';
+import Onboarding from './components/Onboarding';
 import { hasTurboAgreement, turboWalletExists, turboCopyBuy, turboSellToken, turboTokenInfo, getTurboAddress, getTurboBalance } from './services/turboWallet';
 import curatedWhalesData from './data/curatedWhales.json';
 import { X, Settings, Check, AlertTriangle, Info, Layers, WifiOff, Heart } from 'lucide-react';
@@ -245,6 +246,7 @@ export default function App() {
   // One-time risk disclaimer — a public tool that executes real trades with a
   // local hot wallet must gate first use behind an explicit acknowledgement.
   const [disclaimerOk, setDisclaimerOk] = useState(() => loadLS('degen_disclaimer_v1', false));
+  const [onboardOk, setOnboardOk] = useState(() => loadLS('degen_onboard_v1', false));
   const [isConnected, setIsConnected] = useState(false);
   const [walletAddress, setWalletAddress] = useState(() => loadLS(WALLET_LS, null));
   const [isConnecting, setIsConnecting] = useState(false);
@@ -286,7 +288,7 @@ export default function App() {
   // Settings are PER CHAIN — minWhaleMon is in native units (MON vs SOL differ
   // ~100x), so sharing one key across chains silently filtered out every card.
   const SETTINGS_LS = LSK('settings', 'monad_settings');
-  const [settings, setSettings] = useState(() => ({ liveFeed: true, hideStables: false, minWhaleMon: 0, autoSell: true, ...loadLS(SETTINGS_LS, {}) }));
+  const [settings, setSettings] = useState(() => ({ liveFeed: true, hideStables: false, minWhaleMon: 0, autoSell: true, whaleAlerts: false, ...loadLS(SETTINGS_LS, {}) }));
   const [balanceHistory, setBalanceHistory] = useState(() => loadLS(BALHIST_LS, []));
   const settingsRef = useRef(settings);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
@@ -351,6 +353,15 @@ export default function App() {
   useEffect(() => { saveLS(SETTINGS_LS, settings); }, [settings]);
 
   const updateSetting = useCallback((key, value) => setSettings((s) => ({ ...s, [key]: value })), []);
+  // Whale alerts need OS notification permission — request it on enable (user gesture).
+  const toggleWhaleAlerts = useCallback(async (v) => {
+    if (v && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+      let perm = Notification.permission;
+      try { if (perm !== 'denied') perm = await Notification.requestPermission(); } catch { /* unsupported */ }
+      if (perm !== 'granted') { showToast('tx_error', 'Allow notifications in your browser to enable alerts'); return; }
+    }
+    updateSetting('whaleAlerts', v);
+  }, [updateSetting]);
 
   const addWatchWallet = useCallback((addr) => setWatchlist((p) => (p.includes(addr) ? p : [addr, ...p])), []);
   const toggleFavorite = useCallback((trader) => {
@@ -382,6 +393,26 @@ export default function App() {
     });
   }, []);
 
+  // ── Opt-in browser alert for the biggest whale buys (throttled, background only) ──
+  const lastNotifyRef = useRef(0);
+  const maybeNotifyWhale = useCallback((card) => {
+    if (!settingsRef.current.whaleAlerts) return;
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    if (card.side !== 'BUY') return;
+    const usd = card.amountUsd != null ? card.amountUsd : 0;
+    if (usd < (ACTIVE.tiers.whale || Infinity)) return;   // only WHALE-tier trades
+    if (!document.hidden) return;                          // don't nag while they're watching
+    const now = Date.now();
+    if (now - lastNotifyRef.current < 30000) return;       // at most one / 30s
+    lastNotifyRef.current = now;
+    try {
+      new Notification(`🐋 Whale bought $${card.tokenSymbol}`, {
+        body: `$${Math.round(usd).toLocaleString()} on ${ACTIVE.label} · tap to copy`,
+        icon: '/favicon.svg', tag: 'degen-whale',
+      }).onclick = () => { window.focus(); };
+    } catch { /* notifications unavailable */ }
+  }, []);
+
   // ── Load real whale deck + MON price + leaderboard; open live feed ──
   useEffect(() => {
     let alive = true;
@@ -404,6 +435,7 @@ export default function App() {
       if (card.side === 'SELL') { whaleExitRef.current?.(card); return; }
       if (!settingsRef.current.liveFeed) return; // live feed paused in settings
       setCards((prev) => (prev.find((c) => c.id === card.id) ? prev : [card, ...prev].slice(0, 60)));
+      maybeNotifyWhale(card); // opt-in browser alert for the biggest whale buys
     });
 
     const lbTimer = setInterval(() => fetchWhaleLeaderboard().then((lb) => { if (alive && lb.length) setLeaderboard(lb); }), 20000);
@@ -756,6 +788,10 @@ export default function App() {
     );
   }
 
+  if (!onboardOk) {
+    return <Onboarding onDone={() => { setOnboardOk(true); saveLS('degen_onboard_v1', true); }} />;
+  }
+
   return (
     <div className="app-container">
       {showApe && (
@@ -956,7 +992,7 @@ export default function App() {
           <ProfilePage
             walletAddress={turboAddr} monBalance={monBalance} monPriceUsd={monPriceUsd}
             portfolio={portfolio} watchlistCount={watchlistView.length} balanceHistory={balanceHistory}
-            settings={settings} updateSetting={updateSetting}
+            settings={settings} updateSetting={updateSetting} onToggleWhaleAlerts={toggleWhaleAlerts}
             lastTxHash={lastTxHash} indexerUp={indexerUp}
             onDisconnect={handleDisconnect} onClearData={handleClearData}
             externalWallet={walletAddress} onConnect={doConnect} showToast={showToast}

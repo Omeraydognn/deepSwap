@@ -97,7 +97,7 @@ const MIN_WHALE_TIERS = [0, 5, 25, 100];
 export default function ProfilePage({
   walletAddress, monBalance, monPriceUsd,
   portfolio, watchlistCount, balanceHistory,
-  settings, updateSetting,
+  settings, updateSetting, onToggleWhaleAlerts,
   lastTxHash, indexerUp,
   onDisconnect, onClearData,
   externalWallet, onConnect, showToast, onTurboChanged,
@@ -203,6 +203,10 @@ export default function ProfilePage({
           <div style={{ marginTop: 4 }}>
             <SettingRow title="Live whale feed" desc="Stream new whale trades into the deck in real time.">
               <Toggle on={!!settings.liveFeed} onChange={(v) => updateSetting('liveFeed', v)} />
+            </SettingRow>
+            <div style={{ borderTop: '1px solid var(--color-silver-lining)' }} />
+            <SettingRow title="Whale alerts" desc="Get a browser notification when a whale-sized buy lands while the app is in the background.">
+              <Toggle on={!!settings.whaleAlerts} onChange={(v) => (onToggleWhaleAlerts ? onToggleWhaleAlerts(v) : updateSetting('whaleAlerts', v))} />
             </SettingRow>
             <div style={{ borderTop: '1px solid var(--color-silver-lining)' }} />
             <SettingRow title="Hide stablecoin trades" desc="Skip USDC/USDT swaps — focus on real token bets.">
