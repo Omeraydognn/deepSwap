@@ -1,0 +1,13 @@
+{
+  "name": "DegenSlide — Whale Copy-Trade",
+  "short_name": "DegenSlide",
+  "description": "Swipe-to-copy the best on-chain whales on Monad and Solana.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#000814",
+  "theme_color": "#000814",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

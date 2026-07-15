@@ -213,6 +213,33 @@ function inTier(usd, id) {
   return true; // 'all'
 }
 
+// Deck loading placeholder — mirrors the card shape so the layout doesn't jump.
+const Sk = ({ w, h, r = 8, style }) => (
+  <div className="shimmer" style={{ width: w, height: h, borderRadius: r, ...style }} />
+);
+function DeckSkeleton() {
+  return (
+    <div className="card-deck-area">
+      <div style={{ height: '100%', borderRadius: 24, border: '1px solid var(--color-silver-lining)', background: 'var(--color-paper-white)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '13px 18px', borderBottom: '1px solid var(--line-2)' }}>
+          <Sk w={64} h={22} r={100} /><Sk w={90} h={12} /><Sk w={40} h={12} style={{ marginLeft: 'auto' }} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px 0' }}>
+          <Sk w={46} h={46} r={12} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><Sk w={120} h={16} /><Sk w={90} h={11} /></div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '22px 18px 0' }}>
+          <Sk w={140} h={30} r={10} /><Sk w={180} h={38} r={12} /><Sk w={150} h={12} />
+        </div>
+        <div style={{ margin: '16px 18px 0' }}><Sk w="100%" h={54} r={16} /></div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, padding: '10px 18px 0' }}>
+          <Sk w="100%" h={46} r={12} /><Sk w="100%" h={46} r={12} /><Sk w="100%" h={46} r={12} /><Sk w="100%" h={46} r={12} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const clock = useClock();
   // One-time risk disclaimer — a public tool that executes real trades with a
@@ -874,10 +901,7 @@ export default function App() {
               })}
             </div>
             {isLoading ? (
-              <div className="flex flex-col items-center justify-center h-full pb-20" style={{ gap: 16 }}>
-                <div style={{ width: 36, height: 36, borderRadius: '50%', border: '3px solid transparent', borderTopColor: 'var(--accent)', borderRightColor: 'var(--accent-2)', animation: 'spin 0.8s linear infinite' }} />
-                <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-pebble)', margin: 0 }}>Scanning {ACTIVE.label} for whales…</p>
-              </div>
+              <DeckSkeleton />
             ) : deckCards.length > 0 ? (
               <>
                 <TradeSettingsPopover open={showTradeSettings} onClose={() => setShowTradeSettings(false)} amount={tradeAmount} onChangeAmount={setTradeAmount} slippageBps={slippageBps} onChangeSlippage={setSlippageBps} monPriceUsd={monPriceUsd} monBalance={monBalance} />
