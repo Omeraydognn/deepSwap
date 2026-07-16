@@ -1,0 +1,54 @@
+name: Grow Monad smart money
+
+# Monad has no GMGN OpenAPI support, so discovery is a deep on-chain swap scan
+# (backend/scanWhales.js). Like the Solana job, the Render free tier can't
+# persist server-side scans, so this workflow does the durable growth: it runs
+# the scan (which MERGES into curatedWhales.json — only ever adds wallets) and
+# commits the result. The push redeploys, so new Smart Money goes live.
+#
+# Optional repo secret: MONAD_RPC — a dedicated RPC; defaults to rpc.monad.xyz.
+
+on:
+  schedule:
+    - cron: '30 */12 * * *'   # twice a day, offset from the Solana job
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: discover-monad
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install backend deps
+        working-directory: backend
+        run: npm ci
+
+      - name: Run on-chain whale scan
+        working-directory: backend
+        env:
+          MONAD_RPC: ${{ secrets.MONAD_RPC || 'https://rpc.monad.xyz' }}
+        run: node scanWhales.js
+
+      - name: Commit grown roster
+        run: |
+          git config user.name  "degen-discovery-bot"
+          git config user.email "bot@degenslide.local"
+          git add src/data/curatedWhales.json
+          if git diff --cached --quiet; then
+            echo "No new whales this run."
+          else
+            count=$(node -e "console.log(require('./src/data/curatedWhales.json').count)")
+            git commit -m "chore(discovery): grow Monad smart money to ${count} whales [skip ci]"
+            git push
+          fi
