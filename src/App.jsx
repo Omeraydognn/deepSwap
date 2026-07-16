@@ -298,6 +298,9 @@ export default function App() {
   const sellCooldownRef = useRef(new Map());
   const AUTO_SELL_COOLDOWN_MS = 5 * 60 * 1000;
   const whaleExitRef = useRef(null); // "whale sold → close my copy" handler (wired below)
+  // Cards the user already swiped/dismissed — so the live feed and the safety
+  // poll never re-add a trade the user has already dealt with.
+  const dismissedRef = useRef(new Set());
   const [leaderboard, setLeaderboard] = useState([]);
   const [lbMode, setLbMode] = useState('rankings');
   const [showTradeSettings, setShowTradeSettings] = useState(false);
@@ -455,20 +458,41 @@ export default function App() {
       // automation below.
       if (card.side === 'SELL') { whaleExitRef.current?.(card); return; }
       if (!settingsRef.current.liveFeed) return; // live feed paused in settings
+      if (dismissedRef.current.has(card.id)) return; // already swiped away
       setCards((prev) => (prev.find((c) => c.id === card.id) ? prev : [card, ...prev].slice(0, 60)));
       maybeNotifyWhale(card); // opt-in browser alert for the biggest whale buys
     });
 
+    // Safety-net poll: the WebSocket delivers trades instantly, but Render's free
+    // tier can silently drop an idle socket (onclose never fires), so live cards
+    // would stall until a reload. This poll re-fetches the snapshot every 15s and
+    // merges any trades the socket missed — so new whale activity always lands in
+    // the deck on its own, no reload needed. Dismissed/known ids are skipped.
+    const pollTimer = setInterval(async () => {
+      if (!state.alive || !settingsRef.current.liveFeed) return;
+      const deck = await fetchWhaleDeck(40);
+      if (!state.alive || !deck.length) return;
+      setIndexerUp(true);
+      setCards((prev) => {
+        const known = new Set(prev.map((c) => c.id));
+        const fresh = deck.filter((c) => !known.has(c.id) && !dismissedRef.current.has(c.id));
+        return fresh.length ? [...fresh, ...prev].slice(0, 60) : prev;
+      });
+    }, 15000);
+
     const lbTimer = setInterval(() => fetchWhaleLeaderboard().then((lb) => { if (state.alive && lb.length) setLeaderboard(lb); }), 20000);
     const monTimer = setInterval(() => fetchMONPrice().then((m) => { if (state.alive && m) setMonPriceUsd(m.priceUsd); }), 30000);
 
-    return () => { state.alive = false; closeFeed(); clearInterval(lbTimer); clearInterval(monTimer); };
+    return () => { state.alive = false; closeFeed(); clearInterval(pollTimer); clearInterval(lbTimer); clearInterval(monTimer); };
   }, []);
 
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 2800); return () => clearTimeout(t); }, [toast]);
   const showToast = (type, msg) => setToast({ type, key: Date.now(), msg });
 
-  const removeCard = useCallback((trader) => setCards((prev) => prev.filter((c) => c.id !== trader.id)), []);
+  const removeCard = useCallback((trader) => {
+    if (trader?.id != null) dismissedRef.current.add(trader.id);
+    setCards((prev) => prev.filter((c) => c.id !== trader.id));
+  }, []);
 
   // The balance the app runs on is the TURBO wallet's — it's what swipes spend.
   const refreshBalance = useCallback(() => {
