@@ -140,7 +140,7 @@ export default function Leaderboard({ traders = [], roster = [], monPriceUsd, on
   }, [traders, rosterByAddr, sort, verifiedOnly, hasVerified, monPriceUsd]);
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="flex flex-1 flex-col overflow-hidden" style={{ minHeight: 0 }}>
       <div className="flex gap-2 px-4 pb-3 overflow-x-auto items-center" style={{ scrollbarWidth: 'none' }}>
         {SORTS.map((s) => {
           const active = sort === s.id;
@@ -157,7 +157,7 @@ export default function Leaderboard({ traders = [], roster = [], monPriceUsd, on
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-2" style={{ scrollbarWidth: 'none' }}>
+      <div className="flex-1 overflow-y-auto px-4 pb-2" style={{ scrollbarWidth: 'none', minHeight: 0 }}>
         {sorted.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 pt-12 text-center">
             <Waves size={40} strokeWidth={1.5} color="var(--color-pebble)" />
