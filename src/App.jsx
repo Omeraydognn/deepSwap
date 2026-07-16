@@ -855,7 +855,7 @@ export default function App() {
       <aside className="side-nav">
         <div className="brand" style={{ padding: '4px 6px 0' }}>
           <div className="brand-mark">
-            <img src="/favicon.png" alt="DegenSlide Logo" style={{ width: 17, height: 17, borderRadius: 5, objectFit: 'cover' }} />
+            <img src="/favicon.png" alt="DegenSlide" className="brand-logo-img" />
           </div>
           <div>
             <div className="brand-word">DegenSlide</div>
@@ -889,7 +889,7 @@ export default function App() {
       <header className="app-bar">
         <div className="brand">
           <div className="brand-mark">
-            <img src="/favicon.png" alt="DegenSlide Logo" style={{ width: 17, height: 17, borderRadius: 5, objectFit: 'cover' }} />
+            <img src="/favicon.png" alt="DegenSlide" className="brand-logo-img" />
           </div>
           <div>
             <div className="brand-word">DegenSlide</div>
