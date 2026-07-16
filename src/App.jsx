@@ -855,10 +855,7 @@ export default function App() {
       <aside className="side-nav">
         <div className="brand" style={{ padding: '4px 6px 0' }}>
           <div className="brand-mark">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
-              <path d="M12 2L20 8.5V15.5L12 22L4 15.5V8.5L12 2Z" stroke="#fff" strokeWidth="1.8" strokeLinejoin="round" fill="rgba(255,255,255,0.14)" />
-              <path d="M8.5 12.5L11 15L15.5 9.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            <img src="/favicon.png" alt="DegenSlide Logo" style={{ width: 17, height: 17, borderRadius: 5, objectFit: 'cover' }} />
           </div>
           <div>
             <div className="brand-word">DegenSlide</div>
@@ -892,10 +889,7 @@ export default function App() {
       <header className="app-bar">
         <div className="brand">
           <div className="brand-mark">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
-              <path d="M12 2L20 8.5V15.5L12 22L4 15.5V8.5L12 2Z" stroke="#fff" strokeWidth="1.8" strokeLinejoin="round" fill="rgba(255,255,255,0.14)" />
-              <path d="M8.5 12.5L11 15L15.5 9.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            <img src="/favicon.png" alt="DegenSlide Logo" style={{ width: 17, height: 17, borderRadius: 5, objectFit: 'cover' }} />
           </div>
           <div>
             <div className="brand-word">DegenSlide</div>
