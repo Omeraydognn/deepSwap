@@ -1,14 +1,14 @@
 import React, { forwardRef, useMemo, useRef, useState, useEffect } from 'react';
 import TinderCard from 'react-tinder-card';
-import { Activity, Droplet, BarChart3, X, ChevronUp, ExternalLink } from 'lucide-react';
+import { Activity, Droplet, BarChart3, X, ChevronUp, ExternalLink, Copy, Check } from 'lucide-react';
 import { fetchTokenPairData } from '../services/dexscreenerApi';
-import { degenScore, scoreTier } from '../services/degenScore';
+import { degenScoreBreakdown, scoreTier } from '../services/degenScore';
 import { EXPLORER_TX_URL, EXPLORER_ADDR_URL, DEXSCREENER_CHAIN, ACTIVE } from '../config/chain.js';
 
 /* ───────── helpers (all display-only, derived from real address/values) ───────── */
 const ADJ = ['Silent','Swift','Bold','Iron','Neon','Lunar','Dark','Frost','Omega','Rapid','Apex','Stealth','Turbo','Nova','Hyper','Zen'];
 const NOUN = ['Sniper','Whale','Shark','Degen','Hunter','Alpha','Trader','Wizard','Rider','Falcon','Viper','Ghost','Titan','Phantom','Maverick','Ronin'];
-function generateAlias(addr) {
+export function generateAlias(addr) {
   if (!addr) return 'Unknown';
   const sum = addr.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
   return `${ADJ[sum % ADJ.length]} ${NOUN[(sum * 7) % NOUN.length]}`;
@@ -113,6 +113,20 @@ function ChangeBars({ change }) {
   );
 }
 
+/* ───────── back-face building blocks ───────── */
+function BackLabel({ children }) {
+  return <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-pebble)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>{children}</div>;
+}
+function BackKV({ k, v, sub }) {
+  return (
+    <div style={{ borderRadius: 10, border: '1px solid var(--color-silver-lining)', padding: '8px 10px' }}>
+      <div style={{ fontSize: 8.5, fontWeight: 700, color: 'var(--color-pebble)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{k}</div>
+      <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--color-midnight-ink)', fontFamily: '"JetBrains Mono", monospace', marginTop: 2 }}>{v}</div>
+      {sub && <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--color-pebble)', fontFamily: '"JetBrains Mono", monospace', marginTop: 1 }}>{sub}</div>}
+    </div>
+  );
+}
+
 /* ───────── avatar (effigy.im — deterministic from the real address) ───────── */
 export function BlockieAvatar({ addr, size = 42 }) {
   const [loaded, setLoaded] = useState(false);
@@ -133,12 +147,13 @@ export function BlockieAvatar({ addr, size = 42 }) {
 
 /* ═════════════════════════ SWIPE CARD ═════════════════════════ */
 const SwipeCard = forwardRef(function SwipeCard(
-  { trader, stackIndex = 0, isTopCard = false, onSwipeLeft, onSwipeRight, onSwipeUp, monPriceUsd, isFavorite, onToggleFavorite, isCurated },
+  { trader, stackIndex = 0, isTopCard = false, onSwipeLeft, onSwipeRight, onSwipeUp, monPriceUsd, isFavorite, onToggleFavorite, isCurated, onOpenDossier, consensusCount },
   ref,
 ) {
   const [swipeDir, setSwipeDir] = useState(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [showDeepDive, setShowDeepDive] = useState(false);
+  const [copiedAddr, setCopiedAddr] = useState(false);
   const [pair, setPair] = useState(null);      // real DexScreener token data
   const [pairLoaded, setPairLoaded] = useState(false);
   const startPt = useRef(null);
@@ -257,7 +272,7 @@ const SwipeCard = forwardRef(function SwipeCard(
   const badge = sizeBadge(tradeUsd);
   const ch24 = pair?.priceChange?.h24 ?? null;
   // Degen Score — live market depth + whale quality in one glanceable number.
-  const dScore = degenScore({
+  const dBreak = degenScoreBreakdown({
     liquidityUsd: pair?.liquidity ?? trader.liquidityUsd ?? null,
     fdv: pair?.fdv ?? null,
     vol24: pair?.volume?.h24 ?? null,
@@ -265,7 +280,24 @@ const SwipeCard = forwardRef(function SwipeCard(
     sells: pair?.txns?.h24Sells ?? null,
     whaleWinRate: trader.traderScore?.winRate ?? null,
   });
+  const dScore = dBreak?.total ?? null;
   const dTier = dScore != null ? scoreTier(dScore) : null;
+
+  // Whale's entry price (real: trade USD ÷ tokens received) → how far price has
+  // moved since the whale bought. THE "am I still early?" number.
+  const whaleEntryPrice = (tradeUsd != null && trader.tokenAmount > 0) ? tradeUsd / trader.tokenAmount : null;
+  let sinceEntry = null;
+  if (whaleEntryPrice > 0 && pair?.priceUsd > 0) {
+    const pct = ((pair.priceUsd - whaleEntryPrice) / whaleEntryPrice) * 100;
+    if (Math.abs(pct) < 10000) sinceEntry = pct; // decimals mismatch guard
+  }
+
+  // Pair age — young pairs rug; surface it up front.
+  const ageMs = pair?.createdAt ? Date.now() - pair.createdAt : null;
+  const ageLabel = ageMs != null
+    ? (ageMs < 3600e3 ? `${Math.max(1, Math.floor(ageMs / 60e3))}m` : ageMs < 86400e3 ? `${Math.floor(ageMs / 3600e3)}h` : `${Math.floor(ageMs / 86400e3)}d`)
+    : null;
+  const ageRisky = ageMs != null && ageMs < 86400e3; // younger than a day
 
   /* ── BACK CARDS ── */
   if (stackIndex > 0) {
@@ -367,6 +399,12 @@ const SwipeCard = forwardRef(function SwipeCard(
           {trader.copyable === false && (
             <span style={{ fontSize: 8.5, fontWeight: 700, color: 'var(--gold)', background: 'var(--gold-soft)', border: '1px solid rgba(245,181,68,0.4)', padding: '2px 7px', borderRadius: 100, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Watch only</span>
           )}
+          {consensusCount >= 2 && (
+            <span title={`${consensusCount} different whales bought this token in the last 24h — consensus signal`}
+              style={{ fontSize: 8.5, fontWeight: 800, color: '#ff9d4d', background: 'rgba(255,157,77,0.1)', border: '1px solid rgba(255,157,77,0.45)', padding: '2px 8px', borderRadius: 100, letterSpacing: '0.05em', fontFamily: '"JetBrains Mono", monospace', whiteSpace: 'nowrap' }}>
+              🔥 {consensusCount} whales
+            </span>
+          )}
           <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-3)', fontWeight: 600, fontFamily: '"JetBrains Mono", monospace' }}>{timeAgo(trader.ts)}</span>
         </div>
 
@@ -381,7 +419,14 @@ const SwipeCard = forwardRef(function SwipeCard(
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              <span style={{ fontSize: 16.5, fontWeight: 700, color: 'var(--text-1)', letterSpacing: '-0.02em', fontFamily: 'var(--font-display)' }}>{alias}</span>
+              <span
+                data-no-drag="true"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); onOpenDossier?.(trader.address); }}
+                title="Open whale dossier"
+                style={{ fontSize: 16.5, fontWeight: 700, color: 'var(--text-1)', letterSpacing: '-0.02em', fontFamily: 'var(--font-display)', cursor: onOpenDossier ? 'pointer' : 'default', textDecoration: onOpenDossier ? 'underline dotted rgba(255,255,255,0.25) 1px' : 'none', textUnderlineOffset: 3 }}>
+                {alias}
+              </span>
               <span style={{ fontSize: 8.5, fontWeight: 800, color: badge.color, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: '"JetBrains Mono", monospace' }}>{badge.label}</span>
               {isCurated && (
                 <span title="On your tracked whale roster" style={{ display: 'flex', alignItems: 'center', padding: '1px 7px', borderRadius: 100, background: 'rgba(34,211,238,0.1)', border: '1px solid rgba(34,211,238,0.35)' }}>
@@ -409,6 +454,14 @@ const SwipeCard = forwardRef(function SwipeCard(
               <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--surface-3)', display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 800, color: 'var(--text-2)' }}>{(trader.tokenSymbol || '?').slice(0, 1)}</div>
             )}
             <span style={{ fontSize: 30, fontWeight: 800, color: 'var(--text-1)', letterSpacing: '-0.035em', fontFamily: 'var(--font-display)' }}>${trader.tokenSymbol}</span>
+            {ageLabel && (
+              <span title={ageRisky ? 'Fresh pair — extra rug risk' : 'Pair age on this DEX'}
+                style={{ fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 100, letterSpacing: '0.06em', fontFamily: '"JetBrains Mono", monospace',
+                  color: ageRisky ? '#f5b544' : 'var(--text-3)', border: `1px solid ${ageRisky ? 'rgba(245,181,68,0.45)' : 'var(--line-2)'}`,
+                  background: ageRisky ? 'rgba(245,181,68,0.08)' : 'rgba(255,255,255,0.03)' }}>
+                {ageRisky ? '⚠ ' : ''}{ageLabel}
+              </span>
+            )}
           </div>
           {tradeUsd != null && (
             <div style={{ marginTop: 8, fontSize: 'clamp(28px, 5vh, 38px)', fontWeight: 800, letterSpacing: '-0.03em', color: sideColor, fontFamily: '"JetBrains Mono", monospace', lineHeight: 1, textShadow: isBuy ? '0 0 34px rgba(47,230,168,0.35)' : '0 0 34px rgba(255,93,125,0.35)' }}>
@@ -420,6 +473,12 @@ const SwipeCard = forwardRef(function SwipeCard(
             whale {isBuy ? 'bought' : 'sold'} · {trader.amountMon >= 0.01
               ? `${trader.amountMon >= 1000 ? (trader.amountMon / 1000).toFixed(2) + 'K' : trader.amountMon.toFixed(2)} ${ACTIVE.nativeSymbol}`
               : (tradeUsd != null ? fmtUsd(tradeUsd) : `— ${ACTIVE.nativeSymbol}`)}
+            {sinceEntry != null && (
+              <span style={{ marginLeft: 8, color: sinceEntry >= 0 ? 'var(--up)' : 'var(--down)', letterSpacing: '0.04em' }}
+                title="Price move since the whale's entry — negative means you'd enter cheaper than the whale">
+                since entry {sinceEntry >= 0 ? '+' : ''}{Math.abs(sinceEntry) >= 100 ? sinceEntry.toFixed(0) : sinceEntry.toFixed(1)}%
+              </span>
+            )}
           </div>
         </div>
 
@@ -499,48 +558,148 @@ const SwipeCard = forwardRef(function SwipeCard(
             background: 'var(--color-paper-white)',
           }}
         >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid var(--color-frost-shadow)' }}>
-                <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-midnight-ink)' }}>${trader.tokenSymbol} · live data</span>
-                <button onClick={() => setShowDeepDive(false)} style={{ width: 32, height: 32, borderRadius: 16, background: 'var(--color-frost-shadow)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--color-pebble)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', borderBottom: '1px solid var(--color-frost-shadow)' }}>
+                {pair?.imageUrl
+                  ? <img src={pair.imageUrl} alt="" style={{ width: 28, height: 28, borderRadius: '50%' }} />
+                  : <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--color-frost-shadow)', display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800, color: 'var(--color-pebble)' }}>{(trader.tokenSymbol || '?').slice(0, 1)}</div>}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--color-midnight-ink)', lineHeight: 1.1 }}>${trader.tokenSymbol}</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-pebble)', fontFamily: '"JetBrains Mono", monospace' }}>{fmtUsd(pair?.priceUsd)}{ageLabel ? ` · ${ageLabel} old` : ''}{pair?.dexId ? ` · ${pair.dexId}` : ''}</div>
+                </div>
+                <button onClick={() => setShowDeepDive(false)} style={{ width: 32, height: 32, borderRadius: 16, background: 'var(--color-frost-shadow)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--color-pebble)', flexShrink: 0 }}>
                   <X size={18} />
                 </button>
               </div>
 
-              <div className="hide-scrollbar" style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y', padding: '20px' }}>
-                {/* real price changes */}
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-pebble)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Price change (DexScreener)</div>
-                <div style={{ background: 'var(--color-frost-shadow)', borderRadius: 10, padding: '16px', marginBottom: 20 }}>
-                  {pair ? <ChangeBars change={pair.priceChange} /> : <span style={{ fontSize: 12, color: 'var(--color-pebble)' }}>No market data.</span>}
+              <div className="hide-scrollbar" style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y', padding: '16px 18px' }}>
+
+                {/* ── THE WHALE'S PLAY — what you'd actually be copying ── */}
+                <BackLabel>The whale&apos;s play</BackLabel>
+                <div style={{ background: 'var(--color-frost-shadow)', borderRadius: 12, padding: '12px 14px', marginBottom: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                    <BlockieAvatar addr={trader.address} size={30} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--color-midnight-ink)' }}>{alias}</div>
+                      <div style={{ fontSize: 9.5, fontWeight: 600, color: 'var(--color-pebble)', fontFamily: '"JetBrains Mono", monospace' }}>{trader.address?.slice(0, 6)}…{trader.address?.slice(-4)} · {timeAgo(trader.ts)}</div>
+                    </div>
+                    {sinceEntry != null && (
+                      <span style={{ fontSize: 11, fontWeight: 800, fontFamily: '"JetBrains Mono", monospace', color: sinceEntry >= 0 ? 'var(--up)' : 'var(--down)' }}
+                        title="Price move since this whale's entry">
+                        {sinceEntry >= 0 ? '▲' : '▼'} {Math.abs(sinceEntry) >= 100 ? Math.abs(sinceEntry).toFixed(0) : Math.abs(sinceEntry).toFixed(1)}% since entry
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 11 }}>
+                    <BackKV k="Entry size" v={tradeUsd != null ? fmtUsd(tradeUsd) : '—'} sub={trader.amountMon >= 0.01 ? `${trader.amountMon >= 1000 ? (trader.amountMon / 1000).toFixed(2) + 'K' : trader.amountMon.toFixed(2)} ${ACTIVE.nativeSymbol}` : null} />
+                    <BackKV k="Entry price" v={whaleEntryPrice != null ? fmtUsd(whaleEntryPrice) : '—'} sub={pair?.priceUsd ? `now ${fmtUsd(pair.priceUsd)}` : null} />
+                  </div>
+                  <WhaleScore score={trader.traderScore} />
                 </div>
 
-                {/* real market stats */}
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-pebble)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Market</div>
-                <div style={{ background: 'var(--color-frost-shadow)', borderRadius: 10, padding: '4px 16px', marginBottom: 20 }}>
+                {/* ── DEGEN SCORE — the full "why" behind the front pill ── */}
+                {dBreak && dTier && (
+                  <>
+                    <BackLabel>Degen score</BackLabel>
+                    <div style={{ background: 'var(--color-frost-shadow)', borderRadius: 12, padding: '12px 14px', marginBottom: 16 }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
+                        <span style={{ fontSize: 26, fontWeight: 800, fontFamily: '"JetBrains Mono", monospace', color: dTier.color }}>{dScore}</span>
+                        <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.1em', color: dTier.color }}>{dTier.label}</span>
+                        <span style={{ marginLeft: 'auto', fontSize: 9, fontWeight: 600, color: 'var(--color-pebble)' }}>/ 100</span>
+                      </div>
+                      {dBreak.parts.map((p) => (
+                        <div key={p.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3.5px 0' }}>
+                          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-pebble)', width: 108, flexShrink: 0 }}>{p.label}</span>
+                          <div style={{ flex: 1, height: 5, borderRadius: 3, background: 'rgba(128,128,128,0.15)', overflow: 'hidden' }}>
+                            <div style={{ width: `${(p.pts / p.max) * 100}%`, height: '100%', borderRadius: 3, background: p.pts / p.max >= 0.66 ? 'var(--up)' : p.pts / p.max >= 0.33 ? '#f5b544' : 'var(--down)' }} />
+                          </div>
+                          <span style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--color-midnight-ink)', fontFamily: '"JetBrains Mono", monospace', width: 34, textAlign: 'right', flexShrink: 0 }}>{p.pts}/{p.max}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {/* ── MOMENTUM — price change + volume, all timeframes ── */}
+                <BackLabel>Momentum</BackLabel>
+                <div style={{ background: 'var(--color-frost-shadow)', borderRadius: 12, padding: '14px', marginBottom: 16 }}>
+                  {pair ? (
+                    <>
+                      <ChangeBars change={pair.priceChange} />
+                      <div style={{ display: 'flex', gap: 8, marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--color-silver-lining)' }}>
+                        {[['Vol 1h', pair.volume?.h1], ['Vol 6h', pair.volume?.h6], ['Vol 24h', pair.volume?.h24]].map(([k, v]) => (
+                          <div key={k} style={{ flex: 1, textAlign: 'center' }}>
+                            <div style={{ fontSize: 8.5, fontWeight: 700, color: 'var(--color-pebble)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{k}</div>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-midnight-ink)', fontFamily: '"JetBrains Mono", monospace', marginTop: 2 }}>{fmtUsd(v)}</div>
+                          </div>
+                        ))}
+                      </div>
+                      {(pair.txns?.h24Buys || 0) + (pair.txns?.h24Sells || 0) > 0 && (
+                        <div style={{ marginTop: 12 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, fontWeight: 700, marginBottom: 4 }}>
+                            <span style={{ color: 'var(--up)' }}>{pair.txns.h24Buys} buys</span>
+                            <span style={{ color: 'var(--color-pebble)' }}>24h pressure</span>
+                            <span style={{ color: 'var(--down)' }}>{pair.txns.h24Sells} sells</span>
+                          </div>
+                          <div style={{ display: 'flex', height: 6, borderRadius: 3, overflow: 'hidden' }}>
+                            <div style={{ width: `${(pair.txns.h24Buys / (pair.txns.h24Buys + pair.txns.h24Sells)) * 100}%`, background: 'var(--up)' }} />
+                            <div style={{ flex: 1, background: 'var(--down)' }} />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : <span style={{ fontSize: 12, color: 'var(--color-pebble)' }}>No live market data for this token.</span>}
+                </div>
+
+                {/* ── MARKET + honest risk flags from the same live numbers ── */}
+                <BackLabel>Market</BackLabel>
+                <div style={{ background: 'var(--color-frost-shadow)', borderRadius: 12, padding: '4px 14px', marginBottom: 12 }}>
                   {[
-                    ['Price', fmtUsd(pair?.priceUsd)],
                     ['Liquidity', fmtUsd(pair?.liquidity)],
-                    ['FDV', fmtUsd(pair?.fdv)],
                     ['Market Cap', fmtUsd(pair?.marketCap)],
-                    ['Volume 24h', fmtUsd(pair?.volume?.h24)],
-                    ['Buys / Sells 24h', pair ? `${pair.txns?.h24Buys ?? 0} / ${pair.txns?.h24Sells ?? 0}` : '—'],
-                  ].map(([k, v], i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: i < 5 ? '1px solid var(--color-silver-lining)' : 'none' }}>
-                      <span style={{ fontSize: 13, color: 'var(--color-pebble)', fontWeight: 600 }}>{k}</span>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-midnight-ink)', fontFamily: '"JetBrains Mono", monospace' }}>{v}</span>
+                    ['FDV', fmtUsd(pair?.fdv)],
+                    ['FDV / Liquidity', (pair?.fdv && pair?.liquidity) ? `${(pair.fdv / pair.liquidity).toFixed(0)}×` : '—'],
+                    ['Pair created', ageLabel ? `${ageLabel} ago` : '—'],
+                  ].map(([k, v], i, arr) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 0', borderBottom: i < arr.length - 1 ? '1px solid var(--color-silver-lining)' : 'none' }}>
+                      <span style={{ fontSize: 12, color: 'var(--color-pebble)', fontWeight: 600 }}>{k}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-midnight-ink)', fontFamily: '"JetBrains Mono", monospace' }}>{v}</span>
                     </div>
                   ))}
                 </div>
+                {pair && (() => {
+                  const flags = [];
+                  if ((pair.liquidity || 0) < 10_000) flags.push('Thin liquidity (<$10K) — exits move the price');
+                  if (ageRisky) flags.push('Pair younger than 24h — unproven');
+                  if (pair.fdv && pair.liquidity && pair.fdv / pair.liquidity > 100) flags.push(`FDV is ${(pair.fdv / pair.liquidity).toFixed(0)}× liquidity — little real backing`);
+                  return flags.length ? (
+                    <div style={{ borderRadius: 12, border: '1px solid rgba(245,181,68,0.4)', background: 'rgba(245,181,68,0.07)', padding: '10px 13px', marginBottom: 16 }}>
+                      {flags.map((f, i) => (
+                        <div key={i} style={{ fontSize: 10.5, fontWeight: 700, color: '#b98a2e', lineHeight: 1.6 }}>⚠ {f}</div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ borderRadius: 12, border: '1px solid rgba(47,230,168,0.35)', background: 'rgba(47,230,168,0.06)', padding: '10px 13px', marginBottom: 16, fontSize: 10.5, fontWeight: 700, color: 'var(--color-aurora-green)' }}>
+                      ✓ No red flags in live market data
+                    </div>
+                  );
+                })()}
 
-                {/* real links */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {/* ── links + contract ── */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <button
+                    onClick={() => { navigator.clipboard?.writeText(trader.tokenAddress).then(() => { setCopiedAddr(true); setTimeout(() => setCopiedAddr(false), 1400); }).catch(() => {}); }}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 14px', borderRadius: 10, background: 'var(--color-frost-shadow)', border: 'none', cursor: 'pointer', color: copiedAddr ? 'var(--color-aurora-green)' : 'var(--color-midnight-ink)', fontSize: 12, fontWeight: 600 }}>
+                    <span style={{ fontFamily: '"JetBrains Mono", monospace' }}>{copiedAddr ? 'Copied ✓' : `${trader.tokenAddress?.slice(0, 8)}…${trader.tokenAddress?.slice(-6)}`}</span>
+                    {copiedAddr ? <Check size={13} /> : <Copy size={13} />}
+                  </button>
                   <a href={EXPLORER_TX_URL(trader.txHash)} target="_blank" rel="noreferrer"
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: 10, background: 'var(--color-frost-shadow)', textDecoration: 'none', color: 'var(--color-midnight-ink)', fontSize: 13, fontWeight: 600 }}>
-                    View whale's tx on {ACTIVE.kind === 'evm' ? 'MonadScan' : 'Solscan'} <ExternalLink size={14} />
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 14px', borderRadius: 10, background: 'var(--color-frost-shadow)', textDecoration: 'none', color: 'var(--color-midnight-ink)', fontSize: 12, fontWeight: 600 }}>
+                    View whale&apos;s tx on {ACTIVE.kind === 'evm' ? 'MonadScan' : 'Solscan'} <ExternalLink size={14} />
                   </a>
                   {/* dexUrl comes from an external API — only trust an https link (no javascript:/data: XSS) */}
                   <a href={(typeof pair?.dexUrl === 'string' && /^https:\/\//i.test(pair.dexUrl)) ? pair.dexUrl : `https://dexscreener.com/${DEXSCREENER_CHAIN}/${trader.tokenAddress}`} target="_blank" rel="noreferrer"
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: 10, background: 'var(--color-frost-shadow)', textDecoration: 'none', color: 'var(--color-midnight-ink)', fontSize: 13, fontWeight: 600 }}>
-                    ${trader.tokenSymbol} on DexScreener <ExternalLink size={14} />
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 14px', borderRadius: 10, background: 'var(--color-frost-shadow)', textDecoration: 'none', color: 'var(--color-midnight-ink)', fontSize: 12, fontWeight: 600 }}>
+                    ${trader.tokenSymbol} chart on DexScreener <ExternalLink size={14} />
                   </a>
                 </div>
               </div>

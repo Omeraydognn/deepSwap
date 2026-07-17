@@ -38,7 +38,7 @@ const RANK_STYLE = {
   3: { bg: 'linear-gradient(135deg, #d99e6d, #a96b3c)', glow: '0 3px 12px rgba(217,158,109,0.3)' },
 };
 
-function Row({ t, rank, monPriceUsd, onWatch, watched, maxVol }) {
+function Row({ t, rank, monPriceUsd, onWatch, watched, maxVol, onOpenDossier }) {
   const perf = t.perf || whalePerf(t, monPriceUsd);
   const pnlUp = (perf.pnlUsd ?? 0) >= 0;
   const win = perf.winRate != null ? Math.round(perf.winRate * 100) : null;
@@ -62,8 +62,10 @@ function Row({ t, rank, monPriceUsd, onWatch, watched, maxVol }) {
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <a href={EXPLORER_ADDR_URL(t.address)} target="_blank" rel="noreferrer"
-              style={{ fontSize: 12, fontFamily: '"JetBrains Mono", monospace', color: 'var(--text-1)', fontWeight: 700, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <a href={onOpenDossier ? undefined : EXPLORER_ADDR_URL(t.address)} target="_blank" rel="noreferrer"
+              onClick={(e) => { if (onOpenDossier) { e.preventDefault(); onOpenDossier(t.address); } }}
+              title={onOpenDossier ? 'Open whale dossier' : undefined}
+              style={{ fontSize: 12, fontFamily: '"JetBrains Mono", monospace', color: 'var(--text-1)', fontWeight: 700, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}>
               {t.address.slice(0, 7)}…{t.address.slice(-4)}
             </a>
             {t.verified && (<span title="Verified whale (bot-filtered)" style={{ display: 'inline-flex', alignItems: 'center', color: '#22d3ee', flexShrink: 0 }}><BadgeCheck size={13} /></span>)}
@@ -100,7 +102,7 @@ function Row({ t, rank, monPriceUsd, onWatch, watched, maxVol }) {
   );
 }
 
-export default function Leaderboard({ traders = [], roster = [], monPriceUsd, onWatch, watchlist = [] }) {
+export default function Leaderboard({ traders = [], roster = [], monPriceUsd, onWatch, watchlist = [], onOpenDossier }) {
   const [sort, setSort] = useState('profit');
   const [verifiedOnly, setVerifiedOnly] = useState(true);
 
@@ -167,7 +169,7 @@ export default function Leaderboard({ traders = [], roster = [], monPriceUsd, on
         ) : (
           <div className="flex flex-col gap-2">
             {(() => { const maxVol = Math.max(...sorted.map((x) => x.volumeMon || 0), 0); return sorted.map((t, i) => (
-              <Row key={t.address} t={t} rank={i + 1} monPriceUsd={monPriceUsd} onWatch={onWatch} watched={watchlist.includes(t.address)} maxVol={maxVol} />
+              <Row key={t.address} t={t} rank={i + 1} monPriceUsd={monPriceUsd} onWatch={onWatch} watched={watchlist.includes(t.address)} maxVol={maxVol} onOpenDossier={onOpenDossier} />
             )); })()}
           </div>
         )}

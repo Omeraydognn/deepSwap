@@ -125,6 +125,8 @@ export function normalizePair(pair) {
     txns: {
       h24Buys:  pair.txns?.h24?.buys  ?? 0,
       h24Sells: pair.txns?.h24?.sells ?? 0,
+      h1Buys:   pair.txns?.h1?.buys   ?? 0,
+      h1Sells:  pair.txns?.h1?.sells  ?? 0,
     },
     liquidity:  pair.liquidity?.usd ?? 0,
     fdv:        pair.fdv        ?? 0,

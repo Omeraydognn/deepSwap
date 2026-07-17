@@ -6,6 +6,7 @@ import WatchlistPanel from './components/WatchlistPanel';
 import CuratedWhales from './components/CuratedWhales';
 import ProfilePage from './components/ProfilePage';
 import Onboarding from './components/Onboarding';
+import WhaleDossier from './components/WhaleDossier';
 import { hasTurboAgreement, turboWalletExists, turboCopyBuy, turboSellToken, turboTokenInfo, getTurboAddress, getTurboBalance } from './services/turboWallet';
 import curatedWhalesData from './data/curatedWhales.json';
 import { X, Settings, Check, AlertTriangle, Info, Layers, WifiOff, Heart } from 'lucide-react';
@@ -16,7 +17,7 @@ import {
   openWhaleFeed,
   indexerHealth,
 } from './services/indexerApi';
-import { EXPLORER_URL, EXPLORER_ADDR_URL, DEFAULT_SLIPPAGE_BPS, ACTIVE, CHAINS, setActiveChainId, INDEXER_HTTP } from './config/chain.js';
+import { EXPLORER_URL, EXPLORER_ADDR_URL, DEFAULT_SLIPPAGE_BPS, ACTIVE, CHAINS, setActiveChainId, INDEXER_HTTP, DEXSCREENER_CHAIN } from './config/chain.js';
 import {
   connectWallet,
   getConnectedAccount,
@@ -39,6 +40,7 @@ const BALHIST_LS = LSK('balHist', 'monad_balHist');
 const AMOUNT_LS = LSK('tradeAmount', 'monad_tradeAmount');
 const ACTIVITY_LS = LSK('activity', 'monad_activity');
 const AUTOCOPY_LS = LSK('autoCopy', 'monad_autoCopy');
+const SIZING_LS = LSK('sizing', 'monad_sizing');
 const AUTOCOPY_SPEND_LS = LSK('autoCopySpend', 'monad_autoCopySpend');
 
 // Auto-Copy defaults are conservative and chain-native (MON vs SOL scale).
@@ -128,12 +130,13 @@ const SLIPPAGE_TIERS = [
 ];
 
 /* ── Trade settings popover: copy amount + slippage (token is dictated by the whale) ── */
-function TradeSettingsPopover({ open, onClose, amount, onChangeAmount, slippageBps, onChangeSlippage, monPriceUsd, monBalance }) {
+function TradeSettingsPopover({ open, onClose, amount, onChangeAmount, slippageBps, onChangeSlippage, monPriceUsd, monBalance, sizing, onChangeSizing }) {
   const [manualVal, setManualVal] = useState('');
   const isManual = !TIERS.some((t) => t.value === amount);
   if (!open) return null;
   const GAS_BUFFER = ACTIVE.gasBuffer; // leave native funds for gas/rent
   const maxCopy = monBalance != null ? Math.max(0, monBalance - GAS_BUFFER) : null;
+  const mirror = sizing?.mode === 'mirror';
   return (
     <>
       <div onClick={onClose} style={{ position: 'absolute', inset: 0, zIndex: 80, background: 'rgba(2,4,10,0.55)', backdropFilter: 'blur(6px)', borderRadius: 'inherit' }} />
@@ -142,8 +145,43 @@ function TradeSettingsPopover({ open, onClose, amount, onChangeAmount, slippageB
           <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-midnight-ink)' }}>Copy Amount</span>
           <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 14, border: 'none', background: 'var(--color-frost-shadow)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-pebble)' }}><X size={15} /></button>
         </div>
+
+        {/* sizing mode: fixed spend vs proportional mirror of the whale's size */}
+        {onChangeSizing && (
+          <div style={{ display: 'flex', gap: 6, marginBottom: 14, background: 'var(--color-frost-shadow)', borderRadius: 12, padding: 4 }}>
+            {[{ id: 'fixed', label: 'Fixed amount' }, { id: 'mirror', label: '⚖️ Mirror whale' }].map((m) => {
+              const on = (sizing?.mode || 'fixed') === m.id;
+              return (
+                <button key={m.id} type="button" onClick={() => onChangeSizing({ mode: m.id })}
+                  style={{ flex: 1, padding: '8px 0', borderRadius: 9, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: on ? 'var(--color-tidewater-navy)' : 'transparent', color: on ? '#fff' : 'var(--color-pebble)' }}>
+                  {m.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {mirror && (
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-pebble)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>% of the whale&apos;s size</label>
+            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+              {[1, 2, 5, 10].map((p) => {
+                const on = (sizing?.mirrorPct || 5) === p;
+                return (
+                  <button key={p} type="button" onClick={() => onChangeSizing({ mirrorPct: p })}
+                    style={{ flex: 1, padding: '9px 0', borderRadius: 12, border: 'none', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', background: on ? 'var(--color-tidewater-navy)' : 'var(--color-frost-shadow)', color: on ? '#fff' : 'var(--color-midnight-ink)' }}>
+                    {p}%
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 10.5, color: 'var(--color-pebble)', marginTop: 6, fontWeight: 600, lineHeight: 1.5 }}>
+              A whale buying 100 {ACTIVE.nativeSymbol} → you copy {(100 * (sizing?.mirrorPct || 5) / 100).toFixed(1)} {ACTIVE.nativeSymbol}. The amount below is your hard cap per copy.
+            </div>
+          </div>
+        )}
+
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
-          <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-pebble)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>{ACTIVE.nativeSymbol} spent per copy</label>
+          <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-pebble)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>{mirror ? `max ${ACTIVE.nativeSymbol} per copy (cap)` : `${ACTIVE.nativeSymbol} spent per copy`}</label>
           {monBalance != null && (
             <button type="button" onClick={() => { if (maxCopy > 0) { setManualVal(String(+maxCopy.toFixed(3))); onChangeAmount(+maxCopy.toFixed(3)); } }}
               style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-tidewater-navy)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
@@ -270,6 +308,21 @@ export default function App() {
   const [monPriceUsd, setMonPriceUsd] = useState(null);
   const [monBalance, setMonBalance] = useState(null);
   const [tradeAmount, setTradeAmount] = useState(() => loadLS(AMOUNT_LS, TIERS[1].value));
+  // Copy sizing: 'fixed' spends tradeAmount per copy; 'mirror' spends a % of the
+  // whale's own size, capped at tradeAmount (pro proportional copy-trading).
+  const [sizing, setSizing] = useState(() => loadLS(SIZING_LS, { mode: 'fixed', mirrorPct: 5 }));
+  const updateSizing = useCallback((patch) => {
+    setSizing((prev) => { const next = { ...prev, ...patch }; saveLS(SIZING_LS, next); return next; });
+  }, []);
+  const copyAmountFor = useCallback((card) => {
+    if (sizing.mode !== 'mirror') return tradeAmount;
+    const whaleNative = (card.amountMon || 0) > 0
+      ? card.amountMon
+      : (card.amountUsd && monPriceUsd ? card.amountUsd / monPriceUsd : 0);
+    if (!(whaleNative > 0)) return tradeAmount;
+    const minCopy = ACTIVE.id === 'monad' ? 0.05 : 0.005; // dust floor so swaps don't revert
+    return +Math.max(minCopy, Math.min(tradeAmount, whaleNative * (sizing.mirrorPct / 100))).toFixed(4);
+  }, [sizing, tradeAmount, monPriceUsd]);
   const [slippageBps, setSlippageBps] = useState(() => loadLS('monad_slippage', DEFAULT_SLIPPAGE_BPS));
   const [lastTxHash, setLastTxHash] = useState(() => loadLS(LASTTX_LS, null));
   // Favorites/watchlist are address-format-specific → stored per chain
@@ -356,6 +409,7 @@ export default function App() {
   const [lbMode, setLbMode] = useState('rankings');
   const [showTradeSettings, setShowTradeSettings] = useState(false);
   const [isOffline, setIsOffline] = useState(typeof navigator !== 'undefined' && !navigator.onLine);
+  const [dossierAddr, setDossierAddr] = useState(null); // Whale Dossier overlay
   // Turbo 1-swipe trading: agreement + local trading wallet → no per-trade popups.
   // The Turbo wallet IS the app's primary account on both chains — the external
   // wallet (MetaMask/Phantom) is only a funding source / withdraw destination.
@@ -863,7 +917,7 @@ export default function App() {
 
   const handleSwipeLeft = useCallback((t) => { haptic(8); removeCard(t); showToast('pass'); }, [removeCard]);
   // No optimistic "sent" toast — sendCopy reports real wallet/chain status only.
-  const handleSwipeRight = useCallback((t) => { haptic([12, 40, 18]); removeCard(t); sendCopy(t, tradeAmount); }, [removeCard, sendCopy, tradeAmount]);
+  const handleSwipeRight = useCallback((t) => { haptic([12, 40, 18]); removeCard(t); sendCopy(t, copyAmountFor(t)); }, [removeCard, sendCopy, copyAmountFor]);
   // Swipe up = SAVE the whale to the watchlist (favorite), then advance.
   const handleSwipeUp = useCallback((t) => {
     haptic(12);
@@ -926,6 +980,24 @@ export default function App() {
 
   const t = toast ? TOASTS[toast.type] : null;
 
+  // ── Hot Tokens consensus: which tokens are MULTIPLE whales buying right now?
+  // Aggregated purely from the live feed window (real trades, last 24h). ──
+  const hotByToken = (() => {
+    const map = new Map();
+    const cutoff = Date.now() - 24 * 3600e3;
+    for (const c of cards) {
+      if (c.side !== 'BUY' || !c.tokenAddress || (c.ts || 0) < cutoff) continue;
+      const key = c.tokenAddress.toLowerCase();
+      const e = map.get(key) || { symbol: c.tokenSymbol, tokenAddress: c.tokenAddress, whales: new Set(), totalUsd: 0, lastTs: 0, lastCard: null };
+      e.whales.add((c.address || '').toLowerCase());
+      e.totalUsd += c.amountUsd != null ? c.amountUsd : (c.amountMon || 0) * (monPriceUsd || 0);
+      if ((c.ts || 0) > e.lastTs) { e.lastTs = c.ts || 0; e.lastCard = c; }
+      map.set(key, e);
+    }
+    return map;
+  })();
+  const hotTokens = [...hotByToken.values()].filter((e) => e.whales.size >= 2).sort((a, b) => b.whales.size - a.whales.size || b.totalUsd - a.totalUsd);
+
   // Deck respects the pro settings + the size-tier filter (Whale / Shark / Big / All).
   const usdOf = (c) => (c.amountUsd != null ? c.amountUsd : (c.amountMon || 0) * (monPriceUsd || 0));
   const deckCards = cards.filter((c) =>
@@ -987,6 +1059,24 @@ export default function App() {
             <WifiOff size={14} strokeWidth={2.5} /> No internet — live feed paused
           </div>
         </div>
+      )}
+
+      {dossierAddr && (
+        <WhaleDossier
+          address={dossierAddr}
+          onClose={() => setDossierAddr(null)}
+          monPriceUsd={monPriceUsd}
+          rosterEntry={curatedWhalesList.find((w) => (ACTIVE.kind === 'evm' ? (w.address || '').toLowerCase() === dossierAddr.toLowerCase() : w.address === dossierAddr)) || null}
+          isWatched={watchlistView.includes(dossierAddr) || watchlistView.includes(dossierAddr.toLowerCase())}
+          onToggleWatch={(a) => {
+            const norm = ACTIVE.kind === 'evm' ? a.toLowerCase() : a;
+            if (watchlistView.includes(norm) || watchlistView.includes(norm.toLowerCase())) removeFromWatchlist(norm);
+            else { addWatchWallet(norm); showToast('copy', 'Added to watchlist'); }
+          }}
+          isAuto={autoCopy.whales.includes(ACTIVE.kind === 'evm' ? dossierAddr.toLowerCase() : dossierAddr)}
+          onToggleAuto={toggleAutoWhale}
+          autoEnabled={autoCopy.enabled}
+        />
       )}
 
       {/* ── Desktop sidebar (hidden on mobile) — brand, vertical nav, Turbo ── */}
@@ -1082,16 +1172,49 @@ export default function App() {
         {activeTab === 'leaderboard' ? (
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%', margin: '0 -16px' }}>
             <div className="seg-track wide" style={{ margin: '0 16px 10px', flexShrink: 0 }}>
-              {[{ id: 'rankings', label: 'Whales' }, { id: 'curated', label: 'Smart Money' }, { id: 'watchlist', label: 'Watchlist' }].map((m) => (
+              {[{ id: 'rankings', label: 'Whales' }, { id: 'hot', label: '🔥 Hot' }, { id: 'curated', label: 'Smart Money' }, { id: 'watchlist', label: 'Watchlist' }].map((m) => (
                 <button key={m.id} type="button" className={`seg-item ${lbMode === m.id ? 'on' : ''}`} onClick={() => setLbMode(m.id)}>
                   {m.label}
                   {m.id === 'watchlist' && watchlistView.length > 0 && (<span className="seg-badge">{watchlistView.length}</span>)}
                   {m.id === 'curated' && curatedWhalesList.length > 0 && (<span className="seg-badge">{curatedWhalesList.length}</span>)}
+                  {m.id === 'hot' && hotTokens.length > 0 && (<span className="seg-badge">{hotTokens.length}</span>)}
                 </button>
               ))}
             </div>
             {lbMode === 'rankings' ? (
-              <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}><Leaderboard traders={leaderboard} roster={curatedWhalesList} monPriceUsd={monPriceUsd} onWatch={addWatchWallet} watchlist={watchlist} /></div>
+              <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}><Leaderboard traders={leaderboard} roster={curatedWhalesList} monPriceUsd={monPriceUsd} onWatch={addWatchWallet} watchlist={watchlist} onOpenDossier={setDossierAddr} /></div>
+            ) : lbMode === 'hot' ? (
+              <div className="hide-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 16px' }}>
+                {hotTokens.length === 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, paddingTop: 40, textAlign: 'center' }}>
+                    <span style={{ fontSize: 34 }}>🔥</span>
+                    <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-midnight-ink)', margin: 0 }}>No consensus plays right now</p>
+                    <p style={{ fontSize: 12, color: 'var(--color-pebble)', margin: 0, maxWidth: 250, lineHeight: 1.6, fontWeight: 600 }}>
+                      When two or more tracked whales buy the same token within 24h, it shows up here.
+                    </p>
+                  </div>
+                ) : hotTokens.map((h) => (
+                  <div key={h.tokenAddress} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '13px 14px', marginBottom: 8, borderRadius: 16, background: 'var(--color-paper-white)', border: '1px solid rgba(255,157,77,0.3)', boxShadow: 'var(--shadow-md)' }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 12, flexShrink: 0, display: 'grid', placeItems: 'center', background: 'rgba(255,157,77,0.1)', fontSize: 16 }}>🔥</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--color-midnight-ink)' }}>${h.symbol}</div>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-pebble)', fontFamily: '"JetBrains Mono", monospace', marginTop: 2 }}>
+                        {h.whales.size} whales · ${h.totalUsd >= 1000 ? (h.totalUsd / 1000).toFixed(1) + 'K' : h.totalUsd.toFixed(0)} total · {Math.max(1, Math.floor((Date.now() - h.lastTs) / 60000))}m ago
+                      </div>
+                    </div>
+                    <a href={`https://dexscreener.com/${DEXSCREENER_CHAIN}/${h.tokenAddress}`} target="_blank" rel="noreferrer"
+                      style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 700, color: 'var(--color-tidewater-navy)', textDecoration: 'none', padding: '7px 11px', borderRadius: 100, border: '1px solid var(--color-silver-lining)', background: 'var(--color-frost-shadow)' }}>
+                      Chart ↗
+                    </a>
+                    {h.lastCard && h.lastCard.copyable !== false && (
+                      <button onClick={() => sendCopy(h.lastCard, tradeAmount)}
+                        style={{ flexShrink: 0, fontSize: 10.5, fontWeight: 800, color: '#fff', border: 'none', cursor: 'pointer', padding: '7px 13px', borderRadius: 100, background: 'linear-gradient(135deg, #7c6bff 0%, #5946f0 100%)', boxShadow: '0 3px 12px rgba(109,93,246,0.4)' }}>
+                        Copy
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
             ) : lbMode === 'curated' ? (
               <CuratedWhales whales={curatedWhalesList} favorites={favorites} onToggleFavorite={toggleFavorite} onSaveAll={saveAllCurated} monPriceUsd={monPriceUsd} />
             ) : (
@@ -1118,7 +1241,7 @@ export default function App() {
               <DeckSkeleton />
             ) : deckCards.length > 0 ? (
               <>
-                <TradeSettingsPopover open={showTradeSettings} onClose={() => setShowTradeSettings(false)} amount={tradeAmount} onChangeAmount={setTradeAmount} slippageBps={slippageBps} onChangeSlippage={setSlippageBps} monPriceUsd={monPriceUsd} monBalance={monBalance} />
+                <TradeSettingsPopover open={showTradeSettings} onClose={() => setShowTradeSettings(false)} amount={tradeAmount} onChangeAmount={setTradeAmount} slippageBps={slippageBps} onChangeSlippage={setSlippageBps} monPriceUsd={monPriceUsd} monBalance={monBalance} sizing={sizing} onChangeSizing={updateSizing} />
                 <div className="card-deck-area">
                   {[...deckCards.slice(0, 4)].reverse().map((trader, i, arr) => {
                     const stackIndex = arr.length - 1 - i;
@@ -1126,15 +1249,17 @@ export default function App() {
                       <SwipeCard key={trader.id} ref={stackIndex === 0 ? topCardRef : null} trader={trader} stackIndex={stackIndex} isTopCard={stackIndex === 0}
                         onSwipeLeft={handleSwipeLeft} onSwipeRight={handleSwipeRight} onSwipeUp={handleSwipeUp} monPriceUsd={monPriceUsd}
                         isFavorite={favorites.some((f) => f.address === trader.address)} onToggleFavorite={toggleFavorite}
-                        isCurated={curatedSet.has((trader.address || '').toLowerCase())} />
+                        isCurated={curatedSet.has((trader.address || '').toLowerCase())}
+                        onOpenDossier={setDossierAddr}
+                        consensusCount={hotByToken.get((trader.tokenAddress || '').toLowerCase())?.whales?.size || 0} />
                     );
                   })}
                 </div>
                 <div className="action-row">
-                  <button type="button" onClick={() => setShowTradeSettings(true)} title={`${tradeAmount} ${ACTIVE.nativeSymbol} / copy`}
+                  <button type="button" onClick={() => setShowTradeSettings(true)} title={sizing.mode === 'mirror' ? `Mirror ${sizing.mirrorPct}% of whale size (cap ${tradeAmount} ${ACTIVE.nativeSymbol})` : `${tradeAmount} ${ACTIVE.nativeSymbol} / copy`}
                     style={{ width: 40, height: 40, borderRadius: 20, background: 'var(--color-paper-white)', border: '1px solid var(--color-silver-lining)', boxShadow: 'var(--shadow-md)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }}>
                     <Settings size={18} color="var(--color-pebble)" />
-                    <span style={{ position: 'absolute', top: -2, right: -2, fontSize: 8, fontWeight: 700, background: 'var(--color-tidewater-navy)', color: '#fff', borderRadius: 8, padding: '1px 5px', lineHeight: '14px' }}>{tradeAmount}</span>
+                    <span style={{ position: 'absolute', top: -2, right: -2, fontSize: 8, fontWeight: 700, background: 'var(--color-tidewater-navy)', color: '#fff', borderRadius: 8, padding: '1px 5px', lineHeight: '14px' }}>{sizing.mode === 'mirror' ? `${sizing.mirrorPct}%` : tradeAmount}</span>
                   </button>
                   <button type="button" className="btn-pass" onClick={() => swipe('left')} title="Skip"><X size={24} /></button>
                   {(() => {
