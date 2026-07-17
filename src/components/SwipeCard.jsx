@@ -160,6 +160,15 @@ const SwipeCard = forwardRef(function SwipeCard(
     setShowDeepDive(false);
   };
 
+  // Desktop keyboard: App dispatches 'deck:flip' (Space/Enter) — only the top
+  // card responds, toggling the same 3D flip a tap performs.
+  useEffect(() => {
+    if (!isTopCard) return;
+    const onFlip = (e) => setShowDeepDive((v) => (typeof e.detail === 'boolean' ? e.detail : !v));
+    window.addEventListener('deck:flip', onFlip);
+    return () => window.removeEventListener('deck:flip', onFlip);
+  }, [isTopCard]);
+
   // Fetch REAL token market data for the visible cards only.
   useEffect(() => {
     let alive = true;
@@ -396,7 +405,10 @@ const SwipeCard = forwardRef(function SwipeCard(
             </div>
           )}
           <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: '"JetBrains Mono", monospace' }}>
-            whale {isBuy ? 'bought' : 'sold'} · {trader.amountMon >= 1000 ? (trader.amountMon / 1000).toFixed(2) + 'K' : trader.amountMon.toFixed(2)} {ACTIVE.nativeSymbol}
+            {/* USDC-quoted Solana trades carry no native amount — fall back to the trade size we do know */}
+            whale {isBuy ? 'bought' : 'sold'} · {trader.amountMon >= 0.01
+              ? `${trader.amountMon >= 1000 ? (trader.amountMon / 1000).toFixed(2) + 'K' : trader.amountMon.toFixed(2)} ${ACTIVE.nativeSymbol}`
+              : (tradeUsd != null ? fmtUsd(tradeUsd) : `— ${ACTIVE.nativeSymbol}`)}
           </div>
         </div>
 

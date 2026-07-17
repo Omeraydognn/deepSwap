@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Copy, Radio, ExternalLink, Trash2, LogOut, Check, SlidersHorizontal, Filter } from 'lucide-react';
+import { Copy, Radio, ExternalLink, Trash2, LogOut, Check, SlidersHorizontal, Filter, History, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { MONAD_MAINNET, EXPLORER_URL, EXPLORER_ADDR_URL, INDEXER_HTTP, ACTIVE, CHAINS } from '../config/chain.js';
 import { WALLET_NAME } from '../services/activeWallet';
 import TurboActions from './TurboPanel';
@@ -92,6 +92,64 @@ function BalanceChart({ history }) {
   );
 }
 
+/* ── Activity feed: every trade the app executed, newest first ── */
+function timeAgo(t) {
+  const s = Math.max(1, Math.floor((Date.now() - t) / 1000));
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+const AUTO_LABELS = { SL: 'stop-loss', TP: 'take-profit', WHALE_EXIT: 'whale exited' };
+
+function ActivityList({ activity }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!activity?.length) return null;
+  const shown = expanded ? activity.slice(0, 50) : activity.slice(0, 6);
+  return (
+    <div style={{ ...CARD, padding: '14px 16px' }}>
+      <SectionTitle icon={<History size={12} color="var(--color-pebble)" />}>Activity</SectionTitle>
+      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column' }}>
+        {shown.map((a, i) => {
+          const buy = a.kind === 'BUY';
+          const col = buy ? 'var(--up)' : 'var(--down)';
+          const detail = buy
+            ? `${(a.amountNative ?? 0) > 0 ? `${a.amountNative} ${ACTIVE.nativeSymbol}` : ''}${a.usd ? ` · $${a.usd.toFixed(2)}` : ''}`
+            : `${a.fraction != null && a.fraction < 0.999 ? `${Math.round(a.fraction * 100)}%` : 'all'}${a.auto ? ` · auto (${AUTO_LABELS[a.auto] || a.auto})` : ''}`;
+          return (
+            <div key={a.id || i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderTop: i === 0 ? 'none' : '1px solid var(--color-silver-lining)' }}>
+              <div style={{ width: 26, height: 26, borderRadius: 9, flexShrink: 0, display: 'grid', placeItems: 'center', background: buy ? 'rgba(47,230,168,0.12)' : 'rgba(255,93,125,0.12)' }}>
+                {buy ? <ArrowUpRight size={14} color={col} /> : <ArrowDownRight size={14} color={col} />}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-midnight-ink)' }}>
+                  {buy ? 'Copied' : 'Sold'} ${a.symbol}
+                </div>
+                {detail && <div style={{ fontSize: 10, color: 'var(--color-pebble)', fontWeight: 600, marginTop: 1, fontFamily: '"JetBrains Mono", monospace' }}>{detail}</div>}
+              </div>
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <div style={{ fontSize: 9.5, color: 'var(--color-pebble)', fontWeight: 600, fontFamily: '"JetBrains Mono", monospace' }}>{timeAgo(a.time)}</div>
+                {a.hash && (
+                  <a href={`${EXPLORER_URL}/${ACTIVE.txPath}/${a.hash}`} target="_blank" rel="noreferrer"
+                    style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--color-tidewater-navy)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                    tx <ExternalLink size={9} />
+                  </a>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {activity.length > 6 && (
+        <button onClick={() => setExpanded((v) => !v)} style={{ marginTop: 8, width: '100%', padding: '8px 0', borderRadius: 10, border: '1px solid var(--color-silver-lining)', background: 'var(--color-frost-shadow)', color: 'var(--color-midnight-ink)', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+          {expanded ? 'Show less' : `Show all (${Math.min(activity.length, 50)})`}
+        </button>
+      )}
+    </div>
+  );
+}
+
 const MIN_WHALE_TIERS = [0, 5, 25, 100];
 
 export default function ProfilePage({
@@ -100,7 +158,7 @@ export default function ProfilePage({
   settings, updateSetting, onToggleWhaleAlerts,
   lastTxHash, indexerUp,
   onDisconnect, onClearData,
-  externalWallet, onConnect, showToast, onTurboChanged,
+  externalWallet, onConnect, showToast, onTurboChanged, activity,
 }) {
   const [copied, setCopied] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -197,6 +255,9 @@ export default function ProfilePage({
           ))}
         </div>
 
+        {/* ── Activity — the audit trail of every executed trade ── */}
+        <ActivityList activity={activity} />
+
         {/* ── Settings ── */}
         <div style={{ ...CARD, padding: '14px 16px' }}>
           <SectionTitle icon={<SlidersHorizontal size={12} color="var(--color-pebble)" />}>Settings</SectionTitle>
@@ -259,8 +320,8 @@ export default function ProfilePage({
           <div style={{ ...CARD, padding: '14px 16px' }}>
             <SectionTitle>Last Copy Tx</SectionTitle>
             <p style={{ marginTop: 8, fontFamily: 'monospace', fontSize: 11, color: 'var(--color-midnight-ink)', wordBreak: 'break-all', margin: '8px 0 0' }}>{lastTxHash}</p>
-            <a href={`${EXPLORER_URL}/tx/${lastTxHash}`} target="_blank" rel="noreferrer" style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color: 'var(--color-tidewater-navy)', textDecoration: 'none' }}>
-              View on MonadScan <ExternalLink size={12} />
+            <a href={`${EXPLORER_URL}/${ACTIVE.txPath}/${lastTxHash}`} target="_blank" rel="noreferrer" style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color: 'var(--color-tidewater-navy)', textDecoration: 'none' }}>
+              View on {EXPLORER_URL.replace('https://', '')} <ExternalLink size={12} />
             </a>
           </div>
         )}
@@ -289,7 +350,7 @@ export default function ProfilePage({
         </div>
 
         <div style={{ textAlign: 'center', fontSize: 10, color: 'var(--color-pebble)', fontWeight: 600, letterSpacing: '0.04em' }}>
-          DegenSlide · Monad Whale Copy-Trade
+          DegenSlide · Swipe to Copy-Trade Whales
         </div>
       </div>
     </div>

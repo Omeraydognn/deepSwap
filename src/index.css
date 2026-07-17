@@ -536,6 +536,22 @@ body {
 .side-nav { display: none; }
 .app-main-col { display: contents; }
 
+/* keyboard-shortcut hints — desktop only (touch devices have no keys) */
+.kbd-hints { display: none; }
+@media (min-width: 1024px) {
+  .kbd-hints {
+    display: flex; justify-content: center; gap: 18px;
+    margin-top: 14px; flex-shrink: 0;
+    font-size: 11px; color: var(--text-3); font-family: var(--font-mono);
+  }
+  .kbd-hints kbd {
+    display: inline-block; padding: 1px 7px; margin-right: 5px;
+    border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 6px;
+    background: rgba(255, 255, 255, 0.04);
+    font-family: inherit; font-size: 10px; color: var(--text-2);
+  }
+}
+
 /* ── Desktop layout — fill the screen like a real web app (≥1024px) ── */
 @media (min-width: 1024px) {
   html, body, #root { height: 100%; width: 100%; overflow: hidden; }

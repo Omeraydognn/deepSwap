@@ -37,6 +37,7 @@ const PORTFOLIO_LS = LSK('portfolio', 'monad_portfolio');
 const LASTTX_LS = LSK('lastTx', 'monad_lastTx');
 const BALHIST_LS = LSK('balHist', 'monad_balHist');
 const AMOUNT_LS = LSK('tradeAmount', 'monad_tradeAmount');
+const ACTIVITY_LS = LSK('activity', 'monad_activity');
 
 /* ── Clock ── */
 function useClock() {
@@ -290,6 +291,16 @@ export default function App() {
   const SETTINGS_LS = LSK('settings', 'monad_settings');
   const [settings, setSettings] = useState(() => ({ liveFeed: true, hideStables: false, minWhaleMon: 0, autoSell: true, whaleAlerts: false, ...loadLS(SETTINGS_LS, {}) }));
   const [balanceHistory, setBalanceHistory] = useState(() => loadLS(BALHIST_LS, []));
+  // Every executed trade (buys, sells, auto SL/TP/whale-exit closes) — the
+  // user-visible audit trail rendered on the Profile page. Per-chain, capped.
+  const [activity, setActivity] = useState(() => loadLS(ACTIVITY_LS, []));
+  const logActivity = useCallback((entry) => {
+    setActivity((prev) => {
+      const next = [{ id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, time: Date.now(), ...entry }, ...prev].slice(0, 100);
+      saveLS(ACTIVITY_LS, next);
+      return next;
+    });
+  }, []);
   const settingsRef = useRef(settings);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
   const sellingRef = useRef(new Set());
@@ -304,6 +315,7 @@ export default function App() {
   const [leaderboard, setLeaderboard] = useState([]);
   const [lbMode, setLbMode] = useState('rankings');
   const [showTradeSettings, setShowTradeSettings] = useState(false);
+  const [isOffline, setIsOffline] = useState(typeof navigator !== 'undefined' && !navigator.onLine);
   // Turbo 1-swipe trading: agreement + local trading wallet → no per-trade popups.
   // The Turbo wallet IS the app's primary account on both chains — the external
   // wallet (MetaMask/Phantom) is only a funding source / withdraw destination.
@@ -537,6 +549,7 @@ export default function App() {
   const recordBuy = useCallback((trader, amountMon, action, { hash, expectedOut, dex, decimals: liveDecimals, turbo }) => {
     setLastTxHash(hash);
     showToast('tx_sent');
+    try { navigator.vibrate?.([10, 30, 45]); } catch { /* unsupported */ } // trade confirmed on-chain
     const addr = (trader.tokenAddress || '').toLowerCase();
     const decimals = liveDecimals ?? trader.tokenDecimals ?? 18;
     const invested = monPriceUsd ? amountMon * monPriceUsd : 0;
@@ -574,7 +587,8 @@ export default function App() {
       return [entry, ...prev];
     });
     setFavorites((prev) => (prev.find((f) => f.address === trader.address) ? prev : [{ address: trader.address, tokenSymbol: trader.tokenSymbol }, ...prev]));
-  }, [monPriceUsd]);
+    logActivity({ kind: 'BUY', symbol: trader.tokenSymbol, tokenAddress: trader.tokenAddress, amountNative: amountMon, usd: invested || null, hash, whale: trader.address || null });
+  }, [monPriceUsd, logActivity]);
 
   // ── Copy execution: TURBO 1-swipe — the swap is signed locally by the Turbo
   // trading wallet and broadcast immediately. No wallet popup per trade; the
@@ -617,9 +631,9 @@ export default function App() {
   }, []);
 
   const handleClearData = useCallback(() => {
-    setPortfolio([]); setFavorites([]); setWatchlist([]); setLastTxHash(null); setBalanceHistory([]);
+    setPortfolio([]); setFavorites([]); setWatchlist([]); setLastTxHash(null); setBalanceHistory([]); setActivity([]);
     saveLS(PORTFOLIO_LS, []); saveLS(FAV_KEY, []);
-    saveLS(WATCH_KEY, []); saveLS(LASTTX_LS, null); saveLS(BALHIST_LS, []);
+    saveLS(WATCH_KEY, []); saveLS(LASTTX_LS, null); saveLS(BALHIST_LS, []); saveLS(ACTIVITY_LS, []);
   }, []);
 
   const removePosition = useCallback((id) => setPortfolio((prev) => prev.filter((p) => p.id !== id)), []);
@@ -669,6 +683,7 @@ export default function App() {
         const { hash } = await turboSellToken(p.token.address, { slippageBps, preferredDex: p.dex, amountRaw });
         setLastTxHash(hash);
         showToast('sell_sent', sellAll ? 'Position closed' : `Sold ${Math.round(fraction * 100)}%`);
+        logActivity({ kind: 'SELL', symbol: p.token.symbol, tokenAddress: p.token.address, fraction, usd: (p.investedUsd ?? 0) * fraction || null, hash, auto: opts.auto || null });
         if (sellAll) setPortfolio((prev) => prev.filter((x) => x.id !== p.id));
         else reducePosition(p.id, fraction);
         refreshBalance();
@@ -696,6 +711,7 @@ export default function App() {
       const { hash } = await sellToken(from, p.token.address, { slippageBps, preferredDex: p.dex, amountRaw });
       setLastTxHash(hash);
       showToast('sell_sent', sellAll ? 'Position closed' : `Sold ${Math.round(fraction * 100)}%`);
+      logActivity({ kind: 'SELL', symbol: p.token.symbol, tokenAddress: p.token.address, fraction, usd: (p.investedUsd ?? 0) * fraction || null, hash, auto: opts.auto || null });
       if (sellAll) setPortfolio((prev) => prev.filter((x) => x.id !== p.id));
       else reducePosition(p.id, fraction);
       refreshBalance(from);
@@ -707,7 +723,7 @@ export default function App() {
       else showToast('sell_fail');
       throw err;
     }
-  }, [walletAddress, slippageBps, doConnect, refreshBalance, reducePosition]);
+  }, [walletAddress, slippageBps, doConnect, refreshBalance, reducePosition, logActivity]);
 
   // ── "Whale exited → close my copy": a live SELL from the whale you copied,
   // in the token you copied, auto-closes the position (per-position opt-in). ──
@@ -724,7 +740,7 @@ export default function App() {
       for (const p of matches) {
         sellingRef.current.add(p.id); // guard against duplicate sells
         showToast('whale_exit', `Whale sold $${p.token.symbol} — closing your copy…`);
-        sellPosition(p).catch(() => { sellingRef.current.delete(p.id); sellCooldownRef.current.set(p.id, Date.now() + AUTO_SELL_COOLDOWN_MS); });
+        sellPosition(p, { auto: 'WHALE_EXIT' }).catch(() => { sellingRef.current.delete(p.id); sellCooldownRef.current.set(p.id, Date.now() + AUTO_SELL_COOLDOWN_MS); });
       }
     };
   }, [portfolio, sellPosition]);
@@ -758,7 +774,7 @@ export default function App() {
         if (!hitSL && !hitTP) continue;
         sellingRef.current.add(p.id); // guard against duplicate popups
         showToast(hitSL ? 'sl_hit' : 'tp_hit', `$${p.token.symbol} ${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}% — closing…`);
-        try { await sellPosition(p); }
+        try { await sellPosition(p, { auto: hitSL ? 'SL' : 'TP' }); }
         catch { sellingRef.current.delete(p.id); sellCooldownRef.current.set(p.id, Date.now() + AUTO_SELL_COOLDOWN_MS); } // back off before retrying
       }
     };
@@ -767,11 +783,15 @@ export default function App() {
     return () => { alive = false; clearInterval(id); };
   }, [walletAddress, portfolio, sellPosition]);
 
-  const handleSwipeLeft = useCallback((t) => { removeCard(t); showToast('pass'); }, [removeCard]);
+  // Haptic feedback on swipe decisions — no-op where unsupported (desktop/iOS Safari).
+  const haptic = (pattern) => { try { navigator.vibrate?.(pattern); } catch { /* unsupported */ } };
+
+  const handleSwipeLeft = useCallback((t) => { haptic(8); removeCard(t); showToast('pass'); }, [removeCard]);
   // No optimistic "sent" toast — sendCopy reports real wallet/chain status only.
-  const handleSwipeRight = useCallback((t) => { removeCard(t); sendCopy(t, tradeAmount); }, [removeCard, sendCopy, tradeAmount]);
+  const handleSwipeRight = useCallback((t) => { haptic([12, 40, 18]); removeCard(t); sendCopy(t, tradeAmount); }, [removeCard, sendCopy, tradeAmount]);
   // Swipe up = SAVE the whale to the watchlist (favorite), then advance.
   const handleSwipeUp = useCallback((t) => {
+    haptic(12);
     const wasSaved = favorites.some((f) => (f.address || '').toLowerCase() === (t.address || '').toLowerCase());
     if (!wasSaved) toggleFavorite({ address: t.address, tokenSymbol: t.tokenSymbol });
     removeCard(t);
@@ -793,6 +813,41 @@ export default function App() {
 
   const swipe = (dir) => topCardRef.current?.swipe(dir);
   const reloadDeck = useCallback(() => { setIsLoading(true); fetchWhaleDeck(40).then((d) => setCards(d)).finally(() => setIsLoading(false)); }, []);
+
+  // ── Connection resilience: tell the user when the device is offline, and
+  // snap everything back to live the moment the connection returns. ──
+  useEffect(() => {
+    const goOffline = () => setIsOffline(true);
+    const goOnline = () => {
+      setIsOffline(false);
+      showToast('copy', 'Back online — refreshing live data');
+      reloadDeck();
+      refreshBalance();
+      indexerHealth().then((h) => setIndexerUp(!!h));
+    };
+    window.addEventListener('offline', goOffline);
+    window.addEventListener('online', goOnline);
+    return () => { window.removeEventListener('offline', goOffline); window.removeEventListener('online', goOnline); };
+  }, [reloadDeck, refreshBalance]);
+
+  // ── Desktop keyboard shortcuts: ← skip · → copy · ↑ save · Space/Enter flip ──
+  useEffect(() => {
+    const onKey = (e) => {
+      if (activeTab !== 'deck' || showTradeSettings) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // never steal keys from form fields (custom deposit amount, withdraw address…)
+      if (e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+      const key = e.key;
+      if (key === 'ArrowLeft')       { e.preventDefault(); swipe('left'); }
+      else if (key === 'ArrowRight') { e.preventDefault(); swipe('right'); }
+      else if (key === 'ArrowUp')    { e.preventDefault(); swipe('up'); }
+      else if (key === ' ' || key === 'Enter') { e.preventDefault(); window.dispatchEvent(new CustomEvent('deck:flip')); }
+      else if (key === 'Escape')     { window.dispatchEvent(new CustomEvent('deck:flip', { detail: false })); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, showTradeSettings]);
 
   const t = toast ? TOASTS[toast.type] : null;
 
@@ -848,6 +903,14 @@ export default function App() {
       {t && (
         <div key={toast.key} className="animate-slide-up pointer-events-none fixed top-16 left-1/2 z-[70] -translate-x-1/2 flex items-center gap-2.5 rounded-full px-5 py-2.5 text-sm font-bold shadow-lg" style={{ background: t.color, border: '1px solid var(--color-silver-lining)', color: '#fff', backdropFilter: 'blur(16px)', whiteSpace: 'nowrap' }}>
           {(() => { const I = TOAST_ICON[t.kind] || Info; return <I size={15} strokeWidth={2.5} />; })()}<span>{toast.msg || t.msg}</span>
+        </div>
+      )}
+
+      {isOffline && (
+        <div className="pointer-events-none fixed top-0 left-0 right-0 z-[80] flex justify-center">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 8, padding: '7px 16px', borderRadius: 100, background: 'rgba(245,181,68,0.95)', color: '#1a1508', fontSize: 12, fontWeight: 800, boxShadow: '0 4px 18px rgba(0,0,0,0.4)' }}>
+            <WifiOff size={14} strokeWidth={2.5} /> No internet — live feed paused
+          </div>
         </div>
       )}
 
@@ -1015,6 +1078,12 @@ export default function App() {
                   })()}
                   <button type="button" className="btn-copy" onClick={() => swipe('right')} title="Copy Trade"><Check size={24} strokeWidth={2.6} /></button>
                 </div>
+                <div className="kbd-hints" aria-hidden="true">
+                  <span><kbd>←</kbd> skip</span>
+                  <span><kbd>→</kbd> copy</span>
+                  <span><kbd>↑</kbd> save</span>
+                  <span><kbd>space</kbd> details</span>
+                </div>
               </>
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-center pb-20" style={{ gap: 12 }}>
@@ -1030,7 +1099,7 @@ export default function App() {
         ) : (
           <ProfilePage
             walletAddress={turboAddr} monBalance={monBalance} monPriceUsd={monPriceUsd}
-            portfolio={portfolio} watchlistCount={watchlistView.length} balanceHistory={balanceHistory}
+            portfolio={portfolio} watchlistCount={watchlistView.length} balanceHistory={balanceHistory} activity={activity}
             settings={settings} updateSetting={updateSetting} onToggleWhaleAlerts={toggleWhaleAlerts}
             lastTxHash={lastTxHash} indexerUp={indexerUp}
             onDisconnect={handleDisconnect} onClearData={handleClearData}
