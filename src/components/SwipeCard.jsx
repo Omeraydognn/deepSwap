@@ -161,6 +161,22 @@ const SwipeCard = forwardRef(function SwipeCard(
   const firedSwipe = useRef(null);
   const isDragging = useRef(false);
   const backTap = useRef(null); // tap-vs-scroll detection on the flipped (detail) side
+  const backScrollRef = useRef(null);
+  const dossierTap = useRef(null); // tap detection for the whale-identity → dossier
+
+  // react-tinder-card attaches NATIVE touch listeners on the card root and
+  // preventDefaults touchmove, which killed scrolling inside the flipped
+  // details on phones. Stop touch events from ever reaching it while the
+  // finger is on the scroller — native pan-y scrolling takes over. Pointer
+  // events still bubble, so tap-to-flip-back keeps working.
+  useEffect(() => {
+    const el = backScrollRef.current;
+    if (!el) return;
+    const stop = (e) => e.stopPropagation();
+    el.addEventListener('touchstart', stop, { passive: true });
+    el.addEventListener('touchmove', stop, { passive: true });
+    return () => { el.removeEventListener('touchstart', stop); el.removeEventListener('touchmove', stop); };
+  }, [isTopCard]);
 
   // Back face: a tap (no scroll) flips to the front; a drag scrolls the details.
   // Works on touch, where a plain onClick is unreliable under the card's gestures.
@@ -246,8 +262,11 @@ const SwipeCard = forwardRef(function SwipeCard(
     setTimeout(() => setSwipeDir(null), 350);
     if (wasTap && isTopCard && !showDeepDive) setShowDeepDive(true);
   };
-  const handleCardClick = () => {
+  const handleCardClick = (e) => {
     // Desktop mouse fallback — trackEnd already handles touch taps.
+    // Taps on interactive elements (whale identity → dossier, links) must
+    // not ALSO flip the card underneath.
+    if (e?.target?.closest?.('[data-no-drag], a, button')) return;
     if (!isTopCard || isDragging.current || showDeepDive) return;
     setShowDeepDive(true);
   };
@@ -410,7 +429,16 @@ const SwipeCard = forwardRef(function SwipeCard(
 
         {/* ══ WHALE IDENTITY ══ */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 18px 0' }}>
-          <div style={{ position: 'relative', flexShrink: 0 }}>
+          <div
+            data-no-drag="true"
+            onPointerDown={(e) => { e.stopPropagation(); dossierTap.current = { x: e.clientX, y: e.clientY }; }}
+            onPointerUp={(e) => {
+              const s = dossierTap.current; dossierTap.current = null;
+              if (!s || Math.abs(e.clientX - s.x) > 8 || Math.abs(e.clientY - s.y) > 8) return;
+              e.stopPropagation();
+              onOpenDossier?.(trader.address);
+            }}
+            style={{ position: 'relative', flexShrink: 0, cursor: onOpenDossier ? 'pointer' : 'default' }}>
             <BlockieAvatar addr={trader.address} size={46} />
             <span style={{
               position: 'absolute', bottom: -3, right: -3, width: 13, height: 13, borderRadius: '50%',
@@ -421,8 +449,15 @@ const SwipeCard = forwardRef(function SwipeCard(
             <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
               <span
                 data-no-drag="true"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => { e.stopPropagation(); onOpenDossier?.(trader.address); }}
+                onPointerDown={(e) => { e.stopPropagation(); dossierTap.current = { x: e.clientX, y: e.clientY }; }}
+                onPointerUp={(e) => {
+                  // click events get swallowed under the card's pointer capture on
+                  // touch devices — detect the tap ourselves (down+up, no drag)
+                  const s = dossierTap.current; dossierTap.current = null;
+                  if (!s || Math.abs(e.clientX - s.x) > 8 || Math.abs(e.clientY - s.y) > 8) return;
+                  e.stopPropagation();
+                  onOpenDossier?.(trader.address);
+                }}
                 title="Open whale dossier"
                 style={{ fontSize: 16.5, fontWeight: 700, color: 'var(--text-1)', letterSpacing: '-0.02em', fontFamily: 'var(--font-display)', cursor: onOpenDossier ? 'pointer' : 'default', textDecoration: onOpenDossier ? 'underline dotted rgba(255,255,255,0.25) 1px' : 'none', textUnderlineOffset: 3 }}>
                 {alias}
@@ -571,7 +606,7 @@ const SwipeCard = forwardRef(function SwipeCard(
                 </button>
               </div>
 
-              <div className="hide-scrollbar" style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y', padding: '16px 18px' }}>
+              <div ref={backScrollRef} className="hide-scrollbar" style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y', padding: '16px 18px' }}>
 
                 {/* ── THE WHALE'S PLAY — what you'd actually be copying ── */}
                 <BackLabel>The whale&apos;s play</BackLabel>

@@ -1219,7 +1219,8 @@ export default function App() {
               <CuratedWhales whales={curatedWhalesList} favorites={favorites} onToggleFavorite={toggleFavorite} onSaveAll={saveAllCurated} monPriceUsd={monPriceUsd} />
             ) : (
               <WatchlistPanel wallets={watchlistView} onAdd={addWatchWallet} onRemove={removeFromWatchlist}
-                autoWhales={autoCopy.whales} onToggleAuto={toggleAutoWhale} autoEnabled={autoCopy.enabled} />
+                autoWhales={autoCopy.whales} onToggleAuto={toggleAutoWhale} autoEnabled={autoCopy.enabled}
+                onOpenDossier={setDossierAddr} />
             )}
           </div>
         ) : activeTab === 'deck' ? (
