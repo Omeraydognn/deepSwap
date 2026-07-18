@@ -1171,7 +1171,7 @@ export default function App() {
       <main className="main-content">
         {activeTab === 'leaderboard' ? (
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%', margin: '0 -16px' }}>
-            <div className="seg-track wide" style={{ margin: '0 16px 10px', flexShrink: 0 }}>
+            <div className="seg-track wide lb-seg" style={{ margin: '0 16px 10px', flexShrink: 0 }}>
               {[{ id: 'rankings', label: 'Whales' }, { id: 'hot', label: '🔥 Hot' }, { id: 'curated', label: 'Smart Money' }, { id: 'watchlist', label: 'Watchlist' }].map((m) => (
                 <button key={m.id} type="button" className={`seg-item ${lbMode === m.id ? 'on' : ''}`} onClick={() => setLbMode(m.id)}>
                   {m.label}

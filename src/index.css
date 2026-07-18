@@ -282,6 +282,14 @@ body {
 }
 .seg-item:not(.on) .seg-badge { background: var(--accent-soft); color: var(--color-deep-iris); }
 
+/* Leaderboard mode switch: 4 tabs + count badges overflow a phone-width
+   track at the default sizing — compress instead of clipping. */
+@media (max-width: 480px) {
+  .lb-seg { padding: 3px; gap: 1px; }
+  .lb-seg .seg-item { min-width: 0; padding: 7px 4px; font-size: 10.5px; letter-spacing: 0; }
+  .lb-seg .seg-badge { margin-left: 3px; padding: 1px 4px; font-size: 8px; }
+}
+
 /* ── Connect Button — glass pill ── */
 .connect-btn {
   display: flex;
