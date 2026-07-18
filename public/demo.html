@@ -27,9 +27,12 @@
   body { font-family: 'Space Grotesk', sans-serif; color: var(--text-1); }
 
   /* ── 16:9 stage that letterboxes into any screen ── */
-  #stage-wrap { position: fixed; inset: 0; display: grid; place-items: center; }
+  #stage-wrap { position: fixed; inset: 0; }
   #stage {
-    position: relative; width: 1280px; height: 720px; overflow: hidden;
+    /* centered via translate — grid 'safe' alignment start-aligns oversized
+       items, which pushed the portrait stage off-screen */
+    position: absolute; left: 50%; top: 50%;
+    width: 1280px; height: 720px; overflow: hidden;
     background:
       radial-gradient(70% 55% at 15% -10%, rgba(124,107,255,0.16) 0%, transparent 55%),
       radial-gradient(60% 50% at 90% 110%, rgba(34,211,238,0.10) 0%, transparent 55%),
@@ -155,6 +158,32 @@
   .dots { position: absolute; top: 26px; right: 30px; display: flex; gap: 7px; }
   .dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,0.15); transition: background 0.4s, transform 0.4s; }
   .dots i.cur { background: var(--iris); transform: scale(1.3); box-shadow: 0 0 10px rgba(124,107,255,0.7); }
+
+  /* ── PORTRAIT (9:16) — auto on phones / narrow windows, or force with ?portrait ── */
+  body.portrait #stage { width: 720px; height: 1280px; }
+  body.portrait .s-caption { top: 110px; font-size: 40px; padding: 0 40px; }
+  body.portrait .s-caption .sub { font-size: 19px; margin-top: 14px; }
+  body.portrait .logo-mark { width: 150px; height: 150px; border-radius: 40px; }
+  body.portrait .brand-word { font-size: 64px; }
+  body.portrait .tagline { font-size: 22px; }
+  body.portrait .demo-card { width: 420px; margin-top: 150px; }
+  body.portrait .dc-usd { font-size: 48px; }
+  body.portrait .copy-toast { bottom: 170px; font-size: 17px; }
+  body.portrait .feat-grid { grid-template-columns: repeat(2, 290px); gap: 18px; margin-top: 160px; }
+  body.portrait .feat { padding: 22px 20px; }
+  body.portrait .feat h3 { font-size: 19px; }
+  body.portrait .feat p { font-size: 13px; }
+  body.portrait .bolt { font-size: 110px; }
+  body.portrait .s4-line { font-size: 46px; padding: 0 40px; }
+  body.portrait .s4-sub { font-size: 19px; padding: 0 50px; }
+  body.portrait .chains { flex-direction: column; gap: 18px; margin-top: 120px; }
+  body.portrait .chain { justify-content: center; min-width: 340px; }
+  body.portrait .whale-count { font-size: 20px; padding: 0 40px; text-align: center; }
+  body.portrait .cta-word { font-size: 74px; }
+  body.portrait .cta-logo { width: 110px; height: 110px; border-radius: 30px; }
+  body.portrait .cta-tag { font-size: 23px; }
+  body.portrait .ticker { height: 52px; }
+  body.portrait .ticker-inner { font-size: 13px; }
 
   @keyframes pop  { to { opacity: 1; transform: scale(1); } }
   @keyframes rise { to { opacity: 1; transform: translateY(0); } }

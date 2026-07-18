@@ -1,8 +1,19 @@
-  // ── responsive letterbox ──
+  // ── responsive letterbox — landscape 1280×720 or portrait 720×1280 ──
+  // Portrait kicks in automatically on phones / narrow windows; force with
+  // ?portrait or ?land while setting up a recording.
   const stage = document.getElementById('stage');
+  const q = new URLSearchParams(location.search);
+  function isPortrait() {
+    if (q.has('portrait')) return true;
+    if (q.has('land')) return false;
+    return innerHeight > innerWidth;
+  }
   function fit() {
-    const s = Math.min(innerWidth / 1280, innerHeight / 720);
-    stage.style.transform = `scale(${s})`;
+    const portrait = isPortrait();
+    document.body.classList.toggle('portrait', portrait);
+    const W = portrait ? 720 : 1280, H = portrait ? 1280 : 720;
+    const s = Math.min(innerWidth / W, innerHeight / H);
+    stage.style.transform = `translate(-50%, -50%) scale(${s})`;
   }
   addEventListener('resize', fit); fit();
 
@@ -32,17 +43,20 @@
     const card = sc.querySelector('.demo-card');
     if (card) {
       card.classList.remove('fly');
-      // let it settle, then swipe right + toast
-      setTimeout(() => { card.classList.add('fly'); }, 3300);
-      setTimeout(() => { sc.classList.add('toast-on'); }, 4100);
+      if (!pinnedMode) {
+        // let it settle, then swipe right + toast
+        setTimeout(() => { card.classList.add('fly'); }, 3300);
+        setTimeout(() => { sc.classList.add('toast-on'); }, 4100);
+      }
     }
     timer = setTimeout(next, DUR[i + 1] || 5000);
   }
   function next() { idx = (idx + 1) % scenes.length; show(idx); }
 
   // ?scene=N pins one scene with no auto-advance — for screenshots/recording setup
-  const pinned = parseInt(new URLSearchParams(location.search).get('scene'), 10);
-  if (pinned >= 1 && pinned <= scenes.length) {
+  const pinned = parseInt(q.get('scene'), 10);
+  const pinnedMode = pinned >= 1 && pinned <= scenes.length;
+  if (pinnedMode) {
     idx = pinned - 1;
     show(idx);
     clearTimeout(timer);
