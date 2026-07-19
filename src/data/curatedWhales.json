@@ -1,13 +1,13 @@
 {
   "source": "Monad mainnet — on-chain discovery + bot elimination (Swap logs, all quote anchors)",
-  "scannedAt": "2026-07-18T14:14:48.852Z",
-  "scannedBlocks": 299821,
+  "scannedAt": "2026-07-19T04:04:25.350Z",
+  "scannedBlocks": 1350,
   "minUsdPerSwap": 5,
   "minLiquidityUsd": 150000,
   "botsRemoved": {
-    "contracts": 17,
-    "sameBlockArb": 1,
-    "churnMM": 2
+    "contracts": 0,
+    "sameBlockArb": 0,
+    "churnMM": 0
   },
   "count": 338,
   "whales": [
